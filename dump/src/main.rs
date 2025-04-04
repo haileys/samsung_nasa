@@ -1,6 +1,8 @@
-use std::{io::Read, process::ExitCode};
+use std::io::Read;
+use std::process::ExitCode;
 
-use samsung_nasa_parser::{frame::FrameParser, packet::{u1, u3, Data, Packet, Value}};
+use samsung_nasa_parser::frame::FrameParser;
+use samsung_nasa_parser::packet::{u1, u2, u3, Data, Packet, PacketType, Value};
 
 fn main() -> Result<(), ExitCode> {
     let mut buff = [0u8; 128];
@@ -42,26 +44,29 @@ fn dump_frame(frame: &[u8]) {
         }
     };
 
-    println!("PACKET: {} => {}", packet.source, packet.destination);
+    println!("PACKET: {:?}; {} => {}; #{}", packet.data_type, packet.source, packet.destination, packet.packet_number);
     if packet.packet_info.info != u1::new(1) {
-        println!("  packet_info: INFO BIT NOT SET");
+        println!("  * packet_info: INFO BIT NOT SET");
     }
     if packet.packet_info.reserved != u3::new(0) {
-        println!("  packet_info: RESERVED BITS NOT CLEAR");
+        println!("  * packet_info: RESERVED BITS NOT CLEAR");
     }
-    println!("  protocol_version: {}", packet.packet_info.protocol_version);
-    println!("  retry_count: {}", packet.packet_info.retry_count);
-    println!("  packet_type: {:?}", packet.packet_type);
-    println!("  data_type: {:?}", packet.data_type);
-    println!("  packet_number: {}", packet.packet_number);
+    if packet.packet_info.protocol_version != u2::new(2) {
+        println!("  * protocol_version: NOT 2, is: {}", packet.packet_info.protocol_version);
+    }
+    if packet.packet_info.retry_count != u2::new(0) {
+        println!("  * retry_count: {}", packet.packet_info.retry_count);
+    }
+    if packet.packet_type != PacketType::Normal {
+        println!("  * packet_type: {:?}", packet.packet_type);
+    }
     match &packet.data {
         Data::Messages(msgs) => {
             if msgs.is_empty() {
-                println!("  messages: (none)");
+                println!("  (empty)");
             } else {
-                println!("  messages:");
                 for msg in msgs {
-                    print!("    {} => ", msg.number);
+                    print!("  {} => ", msg.number);
                     match msg.value {
                         Value::Enum(value) => println!("0x{value:02x} ({value})"),
                         Value::Variable(value) => println!("0x{value:04x} ({value})"),
@@ -71,8 +76,7 @@ fn dump_frame(frame: &[u8]) {
             }
         }
         Data::Structure(structure) => {
-            println!("  structure: {}", structure.number);
-            println!("    {:x?}", structure.data);
+            println!("  {} => {:x?}", structure.number, structure.data);
         }
     }
     println!();

@@ -129,6 +129,19 @@ pub struct PacketInfo {
 }
 
 impl PacketInfo {
+    pub fn new() -> Self {
+        Self::with_retry_count(u2::new(0))
+    }
+
+    pub fn with_retry_count(retry_count: u2) -> Self {
+        PacketInfo {
+            info: u1::new(1),
+            protocol_version: u2::new(2),
+            retry_count,
+            reserved: u3::new(0),
+        }
+    }
+
     pub fn from_byte(byte: u8) -> Self {
         PacketInfo {
             info: u1::new(byte >> 7),
@@ -139,7 +152,13 @@ impl PacketInfo {
     }
 }
 
-#[derive(Debug)]
+impl Default for PacketInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PacketType {
     StandBy = 0,
