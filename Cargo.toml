@@ -1,0 +1,6 @@
+[workspace]
+resolver = "3"
+members = ["parser", "dump"]
+
+[workspace.dependencies]
+samsung_nasa_parser = { path = "parser" }

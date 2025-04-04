@@ -1,0 +1,7 @@
+[package]
+name = "samsung_nasa_dump"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+samsung_nasa_parser = { workspace = true }
