@@ -1,8 +1,8 @@
-use std::io::Read;
+use std::io::{IsTerminal, Read};
 use std::process::ExitCode;
 
 use samsung_nasa_parser::frame::FrameParser;
-use samsung_nasa_parser::packet::{u1, u2, u3, Data, Packet, PacketType, Value};
+use samsung_nasa_parser::packet::{u1, u2, u3, Data, DataType, Packet, PacketType, Value};
 
 fn main() -> Result<(), ExitCode> {
     let mut buff = [0u8; 128];
@@ -44,7 +44,28 @@ fn dump_frame(frame: &[u8]) {
         }
     };
 
-    println!("PACKET: {:?}; {} => {}; #{}", packet.data_type, packet.source, packet.destination, packet.packet_number);
+    let typ_color = color(match packet.data_type {
+        DataType::Undefined => "",
+        DataType::Read => "\x1b[1;32m",
+        DataType::Write => "\x1b[1;33m",
+        DataType::Request => "\x1b[1;95m",
+        DataType::Notification => "\x1b[2m",
+        DataType::Response => "\x1b[1;36m",
+        DataType::Ack => "\x1b[1;34m",
+        DataType::Nack => "\x1b[1;31m",
+    });
+    let typ_reset = color("\x1b[0m");
+
+    let num_color = color("\x1b[90m");
+    let num_reset = color("\x1b[0m");
+
+    println!("{typ_color}{typ:?}{typ_reset} {num_color}#{num}{num_reset}: {src} => {dst}",
+        typ = packet.data_type,
+        src = packet.source,
+        dst = packet.destination,
+        num = packet.packet_number,
+    );
+
     if packet.packet_info.info != u1::new(1) {
         println!("  * packet_info: INFO BIT NOT SET");
     }
@@ -80,4 +101,16 @@ fn dump_frame(frame: &[u8]) {
         }
     }
     println!();
+}
+
+fn use_color() -> bool {
+    std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
+}
+
+fn color(s: &str) -> &str {
+    if use_color() {
+        s
+    } else {
+        ""
+    }
 }
