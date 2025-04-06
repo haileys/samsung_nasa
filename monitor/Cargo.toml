@@ -1,7 +1,9 @@
 [package]
-name = "samsung_nasa_dump"
+name = "samsung_nasa_monitor"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+structopt = { workspace = true }
 samsung_nasa_parser = { workspace = true }
+serialport = { workspace = true }

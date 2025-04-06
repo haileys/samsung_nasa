@@ -6,14 +6,14 @@ use thiserror::Error;
 #[derive(Default)]
 pub struct FrameParser {
     state: State,
-    buffer: FrameData,
+    buffer: FrameBuffer,
 }
 
 pub const MAX_FRAME_SIZE: usize = 1024;
-pub type FrameData = heapless::Vec<u8, MAX_FRAME_SIZE>;
+pub type FrameBuffer = heapless::Vec<u8, MAX_FRAME_SIZE>;
 
-const FRAME_START: u8 = 0x32;
-const FRAME_END: u8 = 0x34;
+pub const FRAME_START: u8 = 0x32;
+pub const FRAME_END: u8 = 0x34;
 
 #[derive(Debug, Error)]
 pub enum FrameError {
@@ -44,7 +44,7 @@ impl FrameParser {
         FrameParser::default()
     }
 
-    pub fn feed(&mut self, byte: u8) -> Result<Option<&FrameData>, FrameError> {
+    pub fn feed(&mut self, byte: u8) -> Result<Option<&FrameBuffer>, FrameError> {
         let state = core::mem::take(&mut self.state);
         match feed_byte(state, &mut self.buffer, byte) {
             Transition::Next(state) => {
@@ -69,7 +69,7 @@ enum Transition {
     Error(FrameError),
 }
 
-fn feed_byte(state: State, buffer: &mut FrameData, byte: u8) -> Transition {
+fn feed_byte(state: State, buffer: &mut FrameBuffer, byte: u8) -> Transition {
     use Transition::{Next, Complete, Error};
 
     match state {
@@ -121,7 +121,7 @@ fn next_data_state(remain: usize) -> State {
     }
 }
 
-fn crc16(data: &[u8]) -> u16 {
+pub fn crc16(data: &[u8]) -> u16 {
     let mut crc = 0u16;
 
     for byte in data {

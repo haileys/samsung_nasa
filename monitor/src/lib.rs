@@ -1,49 +1,8 @@
-use std::io::{IsTerminal, Read};
-use std::process::ExitCode;
+use std::io::IsTerminal;
 
-use samsung_nasa_parser::frame::FrameParser;
 use samsung_nasa_parser::packet::{u1, u2, u3, Data, DataType, Packet, PacketType, Value};
 
-fn main() -> Result<(), ExitCode> {
-    let mut buff = [0u8; 128];
-    let mut stdin = std::io::stdin().lock();
-    let mut frame_parser = FrameParser::new();
-
-    loop {
-        let n = stdin.read(&mut buff).map_err(|e| {
-            eprintln!("{e}");
-            ExitCode::FAILURE
-        })?;
-
-        if n == 0 {
-            break;
-        }
-
-        for byte in &buff[..n] {
-            match frame_parser.feed(*byte) {
-                Ok(None) => {}
-                Ok(Some(frame)) => {
-                    dump_frame(frame);
-                }
-                Err(e) => {
-                    eprintln!("frame error: {e}");
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn dump_frame(frame: &[u8]) {
-    let packet = match Packet::parse(frame) {
-        Ok(packet) => packet,
-        Err(e) => {
-            eprintln!("packet error: {e:?}");
-            return;
-        }
-    };
-
+pub fn pretty_print(packet: &Packet) {
     let typ_color = color(match packet.data_type {
         DataType::Undefined => "",
         DataType::Read => "\x1b[1;32m",

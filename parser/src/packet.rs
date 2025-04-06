@@ -1,6 +1,11 @@
+use core::str::FromStr;
+
 use derive_more::{Debug, Display};
 
+use thiserror::Error;
 pub use ux::{u1, u2, u3, u4};
+
+use crate::frame::{crc16, FRAME_END, FRAME_START};
 
 pub const MAX_MESSAGE_COUNT: usize = u8::MAX as usize;
 pub const MAX_STRUCTURE_SIZE: usize = 256;
@@ -25,16 +30,33 @@ pub enum Data {
     Structure(Structure),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum PacketError {
     /// reached end of packet while reading data
+    #[error("unexpected end of packet")]
     TooShort,
     /// unknown packet type
+    #[error("unknown packet type: {0}")]
     UnknownPacketType(u4),
     /// encounted a structure unexpectedly - structures may only appear
     /// as the sole message in a packet
+    #[error("invalid structure in packet payload")]
     UnexpectedStructure,
+    #[error("structure too large: {size}")]
     StructureTooLong { size: usize },
+}
+
+#[derive(Debug, Error)]
+pub enum SerializePacketError {
+    /// reached end of buffer while writing packet
+    #[error("buffer too short")]
+    BufferTooShort,
+    /// an invalid value type was supplied for a message
+    #[error("packet message contains value of wrong type")]
+    InvalidMessageValue,
+    /// written packet would be too large to transmit
+    #[error("packet too long for wire")]
+    PacketTooLong,
 }
 
 impl Packet {
@@ -64,6 +86,90 @@ impl Packet {
             packet_number,
             data,
         })
+    }
+
+    pub fn serialize_frame(&self, out: &mut [u8]) -> Result<usize, SerializePacketError> {
+        // start frame
+        let mut writer = PacketWriter::new(out);
+
+        writer.write_u8(0xfd)?;
+        writer.write_u8(0xf8)?;
+        writer.write_u8(0xef)?;
+        writer.write_u8(0x7c)?;
+
+        writer.write_u8(FRAME_START)?;
+
+        // write zero for length, we'll fill it in later
+        let len_pos = writer.pos;
+        writer.write_u16(0)?;
+
+        // serialize frame data
+        let data_pos = writer.pos;
+        let data_len = self.serialize(&mut writer)?;
+
+        // calculate and write crc16
+        let crc = crc16(&writer.buff[data_pos..][..data_len]);
+        writer.write_u16(crc)?;
+
+        // frame length on the wire includes length field and crc
+        let wire_len = u16::try_from(writer.pos - len_pos)
+            .map_err(|_| SerializePacketError::PacketTooLong)?;
+
+        // fix up frame length
+        writer.buff[len_pos..][..2].copy_from_slice(&u16::to_be_bytes(wire_len));
+
+        // finish frame
+        writer.write_u8(FRAME_END)?;
+
+        Ok(writer.pos)
+    }
+
+    fn serialize(&self, writer: &mut PacketWriter) -> Result<usize, SerializePacketError> {
+        writer.write_array(self.source.to_bytes())?;
+        writer.write_array(self.destination.to_bytes())?;
+        writer.write_u8(self.packet_info.to_byte())?;
+
+        let mut byte = 0u8;
+        byte |= u8::from(self.packet_type.to_u4()) << 4;
+        byte |= u8::from(self.data_type.to_u4());
+        writer.write_u8(byte)?;
+
+        writer.write_u8(self.packet_number)?;
+
+        match &self.data {
+            Data::Messages(messages) => {
+                writer.write_u8(u8::try_from(messages.len()).unwrap())?;
+
+                for message in messages {
+                    writer.write_u16(message.number.0)?;
+                    match (message.number.kind(), message.value) {
+                        (MessageKind::Enum, Value::Enum(value)) => {
+                            writer.write_u8(value)?;
+                        }
+                        (MessageKind::Variable, Value::Variable(value)) => {
+                            writer.write_u16(value)?;
+                        }
+                        (MessageKind::LongVariable, Value::LongVariable(value)) => {
+                            writer.write_u32(value)?;
+                        }
+                        _ => { return Err(SerializePacketError::InvalidMessageValue); }
+                    }
+                }
+            }
+            Data::Structure(structure) => {
+                // message count:
+                writer.write_u8(1)?;
+
+                if structure.number.kind() != MessageKind::Structure {
+                    return Err(SerializePacketError::InvalidMessageValue);
+                }
+
+                writer.write_u16(structure.number.0)?;
+                writer.write_bytes(&structure.data)?;
+            }
+        }
+
+        Ok(writer.pos)
     }
 }
 
@@ -96,7 +202,7 @@ fn read_payload(message_count: u8, reader: &mut PacketReader) -> Result<Data, Pa
     Ok(Data::Messages(messages))
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, PartialEq, Eq)]
 #[debug("{class:02x}.{channel:02x}.{address:02x}")]
 #[display("{:?}", self)]
 pub struct Address {
@@ -115,6 +221,38 @@ impl Address {
             class: bytes[0],
             channel: bytes[1],
             address: bytes[2],
+        }
+    }
+}
+
+#[derive(Display, Debug)]
+#[display("invalid address")]
+pub struct InvalidAddress;
+
+impl FromStr for Address {
+    type Err = InvalidAddress;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if !s.is_ascii() {
+            return Err(InvalidAddress);
+        }
+
+        if s.len() != 8 {
+            return Err(InvalidAddress);
+        }
+
+        if &s[2..3] != "." || &s[5..6] != "." {
+            return Err(InvalidAddress);
+        }
+
+        return Ok(Address {
+            class: parse_hex(&s[0..2])?,
+            channel: parse_hex(&s[3..5])?,
+            address: parse_hex(&s[6..8])?,
+        });
+
+        fn parse_hex(s: &str) -> Result<u8, InvalidAddress> {
+            u8::from_str_radix(s, 16).map_err(|_| InvalidAddress)
         }
     }
 }
@@ -150,6 +288,14 @@ impl PacketInfo {
             reserved: u3::new(byte & 0x07),
         }
     }
+
+    pub fn to_byte(&self) -> u8 {
+        let mut byte = 0;
+        byte |= 1 << 7;
+        byte |= u8::from(self.protocol_version) << 5;
+        byte |= u8::from(self.retry_count) << 3;
+        byte
+    }
 }
 
 impl Default for PacketInfo {
@@ -158,7 +304,7 @@ impl Default for PacketInfo {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub enum PacketType {
     StandBy = 0,
@@ -179,9 +325,13 @@ impl PacketType {
             _ => Err(PacketError::UnknownPacketType(u))
         }
     }
+
+    pub fn to_u4(self) -> u4 {
+        u4::new(self as u8)
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub enum DataType {
     Undefined = 0,
@@ -208,15 +358,19 @@ impl DataType {
             _ => unreachable!(),
         }
     }
+
+    pub fn to_u4(self) -> u4 {
+        u4::new(self as u8)
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Message {
     pub number: MessageNumber,
     pub value: Value,
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, Clone, Copy)]
 #[debug("MessageNumber({:04x?})", self.0)]
 #[display("{:04x?}", self.0)]
 pub struct MessageNumber(pub u16);
@@ -233,7 +387,7 @@ impl MessageNumber {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum MessageKind {
     Enum = 0,
@@ -242,7 +396,7 @@ pub enum MessageKind {
     Structure = 3,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Value {
     Enum(u8),
     Variable(u16),
@@ -285,5 +439,50 @@ impl<'a> PacketReader<'a> {
 
     pub fn read_u32(&mut self) -> Result<u32, PacketError> {
         Ok(u32::from_be_bytes(self.read_array()?))
+    }
+}
+
+#[derive(Debug)]
+pub struct BufferTooSmall;
+
+struct PacketWriter<'a> {
+    buff: &'a mut [u8],
+    pos: usize,
+}
+
+impl<'a> PacketWriter<'a> {
+    pub fn new(buff: &'a mut [u8]) -> Self {
+        PacketWriter { buff, pos: 0 }
+    }
+
+    pub fn remaining_mut(&mut self) -> &mut [u8] {
+        &mut self.buff[self.pos..]
+    }
+
+    pub fn write_bytes(&mut self, slice: &[u8]) -> Result<(), SerializePacketError> {
+        let (head, _) = self.remaining_mut()
+            .split_at_mut_checked(slice.len())
+            .ok_or(SerializePacketError::BufferTooShort)?;
+
+        head.copy_from_slice(&slice);
+        self.pos += slice.len();
+
+        Ok(())
+    }
+
+    pub fn write_array<const N: usize>(&mut self, array: [u8; N]) -> Result<(), SerializePacketError> {
+        self.write_bytes(&array)
+    }
+
+    pub fn write_u8(&mut self, u: u8) -> Result<(), SerializePacketError> {
+        self.write_array([u])
+    }
+
+    pub fn write_u16(&mut self, u: u16) -> Result<(), SerializePacketError> {
+        self.write_array(u16::to_be_bytes(u))
+    }
+
+    pub fn write_u32(&mut self, u: u32) -> Result<(), SerializePacketError> {
+        self.write_array(u32::to_be_bytes(u))
     }
 }
