@@ -785,7 +785,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
-name = "samsung_nasa_busd"
+name = "samsunghvac-busd"
 version = "0.1.0"
 dependencies = [
  "async-stream",
@@ -794,7 +794,7 @@ dependencies = [
  "futures",
  "heapless",
  "log",
- "samsung_nasa_parser",
+ "samsunghvac-parser",
  "serialport",
  "structopt",
  "thiserror 2.0.12",
@@ -804,43 +804,59 @@ dependencies = [
 ]
 
 [[package]]
-name = "samsung_nasa_cmd"
+name = "samsunghvac-client"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "futures",
+ "heapless",
+ "log",
+ "samsunghvac-parser",
+ "serialport",
+ "structopt",
+ "tokio",
+ "tokio-serial",
+ "tokio-stream",
+]
+
+[[package]]
+name = "samsunghvac-cmd"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "samsung_nasa_monitor",
- "samsung_nasa_parser",
+ "samsunghvac-monitor",
+ "samsunghvac-parser",
  "serialport",
  "structopt",
 ]
 
 [[package]]
-name = "samsung_nasa_metrics"
+name = "samsunghvac-metrics"
 version = "0.1.0"
 dependencies = [
  "axum",
  "env_logger",
  "futures",
  "log",
- "samsung_nasa_busd",
- "samsung_nasa_parser",
+ "samsunghvac-busd",
+ "samsunghvac-parser",
  "structopt",
  "thiserror 2.0.12",
  "tokio",
 ]
 
 [[package]]
-name = "samsung_nasa_monitor"
+name = "samsunghvac-monitor"
 version = "0.1.0"
 dependencies = [
- "samsung_nasa_busd",
- "samsung_nasa_parser",
+ "samsunghvac-busd",
+ "samsunghvac-parser",
  "serialport",
  "structopt",
 ]
 
 [[package]]
-name = "samsung_nasa_parser"
+name = "samsunghvac-parser"
 version = "0.1.0"
 dependencies = [
  "derive_more",

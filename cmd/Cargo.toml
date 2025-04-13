@@ -1,11 +1,11 @@
 [package]
-name = "samsung_nasa_cmd"
+name = "samsunghvac-cmd"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-samsung_nasa_monitor = { workspace = true }
-samsung_nasa_parser = { workspace = true }
+samsunghvac-monitor = { workspace = true }
+samsunghvac-parser = { workspace = true }
 serialport = { workspace = true }
 structopt = { workspace = true }
 heapless = { workspace = true }

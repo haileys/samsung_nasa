@@ -6,9 +6,9 @@ use std::time::Duration;
 use bytes::{Bytes, BytesMut};
 use futures::{future, pin_mut, Stream, StreamExt};
 use async_stream::try_stream;
-use samsung_nasa_busd::DEFAULT_SOCKET;
-use samsung_nasa_parser::frame::{FrameBuffer, FrameError, FrameParser, MAX_FRAME_SIZE};
-use samsung_nasa_parser::packet::{Packet, PacketError, SerializePacketError};
+use samsunghvac_busd::DEFAULT_SOCKET;
+use samsunghvac_parser::frame::{FrameError, FrameParser, MAX_FRAME_SIZE};
+use samsunghvac_parser::packet::{Packet, PacketError, SerializePacketError};
 use structopt::StructOpt;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
@@ -106,18 +106,16 @@ async fn run_bus(
     let (port_rx, mut port_tx) = tokio::io::split(port);
 
     let send = async move {
-        let mut buffer = FrameBuffer::new();
-
         while let Some(packet) = send_rx.recv().await {
-            let frame = match packet.serialize_frame(&mut buffer) {
-                Ok(n) => &buffer[..n],
+            let bytes = match serialize_frame(&packet) {
+                Ok(bytes) => bytes,
                 Err(err) => {
                     log::warn!("serializing frame sending to bus: {err:?}");
                     continue;
                 }
             };
 
-            port_tx.write_all(&frame).await?;
+            port_tx.write_all(&bytes).await?;
         }
 
         log::warn!("send_rx hung up, exiting");

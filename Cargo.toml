@@ -1,13 +1,20 @@
 [workspace]
 resolver = "3"
-members = ["parser", "monitor", "cmd", "busd", "metrics"]
+members = [
+    "busd",
+    "cmd",
+    "metrics",
+    "monitor",
+    "parser",
+    "client",
+]
 
 [workspace.dependencies]
 # project crates:
-samsung_nasa_busd = { path = "busd" }
-samsung_nasa_metrics = { path = "metrics" }
-samsung_nasa_monitor = { path = "monitor" }
-samsung_nasa_parser = { path = "parser" }
+samsunghvac-busd = { path = "busd" }
+samsunghvac-metrics = { path = "metrics" }
+samsunghvac-monitor = { path = "monitor" }
+samsunghvac-parser = { path = "parser" }
 
 # external deps:
 heapless = "0.8"

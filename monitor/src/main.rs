@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use samsung_nasa_parser::frame::FrameParser;
-use samsung_nasa_parser::packet::{Address, Packet};
+use samsunghvac_parser::frame::FrameParser;
+use samsunghvac_parser::packet::{Address, Packet};
 
 use serialport::{DataBits, FlowControl, Parity, StopBits};
 use structopt::StructOpt;
@@ -124,7 +124,7 @@ fn dump_frame(frame: &[u8], ignore: &[Address]) {
     }
 
     let mut rendered = String::new();
-    samsung_nasa_parser::pretty::pretty_print(&mut rendered, &packet, use_color()).unwrap();
+    samsunghvac_parser::pretty::pretty_print(&mut rendered, &packet, use_color()).unwrap();
 
     std::io::stdout().write_all(rendered.as_bytes()).unwrap();
 }

@@ -1,5 +1,5 @@
 [package]
-name = "samsung_nasa_metrics"
+name = "samsunghvac-metrics"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,8 +8,8 @@ axum = "0.8"
 env_logger = { version = "0.11", default-features = false, features = ["humantime", "color", "auto-color"] }
 futures = { version = "0.3", default-features = false }
 log = "0.4"
-samsung_nasa_busd = { workspace = true }
-samsung_nasa_parser = { workspace = true }
+samsunghvac-busd = { workspace = true }
+samsunghvac-parser = { workspace = true }
 structopt = { workspace = true }
 thiserror = "2.0"
 tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }

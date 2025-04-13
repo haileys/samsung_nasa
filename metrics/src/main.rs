@@ -8,13 +8,14 @@ use std::fmt::{Display, Write};
 use axum::extract::State;
 use axum::Router;
 use futures::future;
-use samsung_nasa_parser::frame::{FrameBuffer, FrameParser};
-use samsung_nasa_parser::message::{self, FromMessage, FromValue};
-use samsung_nasa_parser::packet::{Address, Data, DataType, MessageNumber, Packet, PacketType, Value};
+use samsunghvac_parser::frame::{FrameBuffer, FrameParser};
+use samsunghvac_parser::message;
+use samsunghvac_parser::message::convert::{IsMessage, ValueType};
+use samsunghvac_parser::packet::{Address, Data, DataType, MessageNumber, Packet, PacketType, Value};
 use structopt::StructOpt;
 use thiserror::Error;
 
-use samsung_nasa_busd::DEFAULT_SOCKET;
+use samsunghvac_busd::DEFAULT_SOCKET;
 use tokio::io::AsyncReadExt;
 use tokio::net::UnixStream;
 
@@ -213,9 +214,9 @@ fn render_attributes(mut m: AddressMetrics, attrs: &AttrMap) -> fmt::Result {
     Ok(())
 }
 
-fn get_message<M: FromMessage>(attrs: &AttrMap) -> Option<M::Output> {
+fn get_message<M: IsMessage>(attrs: &AttrMap) -> Option<M::Value> {
     let value = attrs.get(&M::NUMBER)?;
-    M::Output::try_from_value(*value)
+    M::Value::try_from_value(*value)
 }
 
 struct AddressMetrics<'a> {
