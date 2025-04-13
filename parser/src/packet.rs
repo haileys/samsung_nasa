@@ -105,10 +105,11 @@ impl Packet {
 
         // serialize frame data
         let data_pos = writer.pos;
-        let data_len = self.serialize(&mut writer)?;
+        self.serialize(&mut writer)?;
+        let data_end = writer.pos;
 
         // calculate and write crc16
-        let crc = crc16(&writer.buff[data_pos..][..data_len]);
+        let crc = crc16(&writer.buff[data_pos..data_end]);
         writer.write_u16(crc)?;
 
         // frame length on the wire includes length field and crc
@@ -124,7 +125,7 @@ impl Packet {
         Ok(writer.pos)
     }
 
-    fn serialize(&self, writer: &mut PacketWriter) -> Result<usize, SerializePacketError> {
+    fn serialize(&self, writer: &mut PacketWriter) -> Result<(), SerializePacketError> {
         writer.write_array(self.source.to_bytes())?;
         writer.write_array(self.destination.to_bytes())?;
         writer.write_u8(self.packet_info.to_byte())?;
@@ -169,7 +170,7 @@ impl Packet {
             }
         }
 
-        Ok(writer.pos)
+        Ok(())
     }
 }
 
