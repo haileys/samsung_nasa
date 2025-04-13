@@ -2,6 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use futures::{future, pin_mut, Stream, StreamExt};
@@ -32,7 +33,10 @@ struct Opt {
 async fn main() -> Result<(), ExitCode> {
     let opt = Opt::from_args();
 
-    env_logger::init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Info)
+        .parse_default_env()
+        .init();
 
     run(opt).await.map_err(|err| {
         log::error!("{err}");
@@ -120,6 +124,7 @@ async fn run_bus(
             port_tx.write_all(&frame).await?;
         }
 
+        log::warn!("send_rx hung up, exiting");
         Ok(())
     };
 
@@ -178,6 +183,7 @@ async fn run_client(
 
             if let Err(_) = send_tx.send(packet).await {
                 // bus task has quit, we should quit too
+                log::warn!("send_tx hung up, disconnecting client");
                 break;
             }
         }
@@ -196,6 +202,7 @@ async fn run_client(
             client_tx.write_all(&bytes).await?;
         }
 
+        log::warn!("recv_rx hung up, disconnecting client");
         Ok(())
     };
 
@@ -216,6 +223,7 @@ fn serialize_frame(packet: &Packet) -> Result<Bytes, SerializePacketError> {
     bytes.truncate(n);
     Ok(bytes.into())
 }
+
 fn packet_stream(io: impl AsyncRead)
     -> impl Stream<Item = io::Result<Result<Box<Packet>, ReadPacketError>>>
 {
@@ -223,7 +231,7 @@ fn packet_stream(io: impl AsyncRead)
         pin_mut!(io);
 
         let mut parser = FrameParser::new();
-        let mut buffer = FrameBuffer::new();
+        let mut buffer = [0u8; 1024];
 
         loop {
             let data = match io.read(&mut buffer).await? {
@@ -268,6 +276,7 @@ fn open_serial_port(path: &str) -> Result<SerialStream, tokio_serial::Error> {
         .data_bits(serialport::DataBits::Eight)
         .parity(serialport::Parity::Even)
         .stop_bits(serialport::StopBits::One)
+        .timeout(Duration::from_secs(1))
         .open_native_async()
 }
 
