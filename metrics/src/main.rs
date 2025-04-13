@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::{fmt, io};
-use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 use std::fmt::{Display, Write};
@@ -8,22 +7,19 @@ use std::fmt::{Display, Write};
 use axum::extract::State;
 use axum::Router;
 use futures::future;
-use samsunghvac_parser::frame::{FrameBuffer, FrameParser};
 use samsunghvac_parser::message;
 use samsunghvac_parser::message::convert::{IsMessage, ValueType};
 use samsunghvac_parser::packet::{Address, Data, DataType, MessageNumber, Packet, PacketType, Value};
 use structopt::StructOpt;
 use thiserror::Error;
 
-use samsunghvac_busd::DEFAULT_SOCKET;
-use tokio::io::AsyncReadExt;
-use tokio::net::UnixStream;
+use samsunghvac_client::transport::{self, TransportOpt, TransportReceiver};
 
 #[derive(StructOpt)]
 struct Opt {
-    #[structopt(short = "b", long = "bus", default_value_os = DEFAULT_SOCKET.as_os_str())]
-    pub bus: PathBuf,
-    #[structopt(short = "l", long = "listen", default_value_os = DEFAULT_SOCKET.as_os_str())]
+    #[structopt(flatten)]
+    pub transport: TransportOpt,
+    #[structopt(short = "l", long = "listen", default_value = "0.0.0.0:8000")]
     pub listen: String,
 }
 
@@ -46,8 +42,8 @@ async fn main() -> Result<(), ExitCode> {
 enum RunError {
     #[error("listening on {1}: {0}")]
     Bind(#[source] io::Error, String),
-    #[error("opening bus: {bus}: {0}", bus = .1.display())]
-    OpenBus(#[source] io::Error, PathBuf),
+    #[error(transparent)]
+    OpenBus(#[from] transport::OpenError),
     #[error("bus i/o: {0}")]
     RunBus(#[source] io::Error),
     #[error("serving metrics: {0}")]
@@ -64,8 +60,7 @@ type AttrMap = HashMap<MessageNumber, Value>;
 async fn run(opt: Opt) -> Result<(), RunError> {
     let state = Arc::new(AppState::default());
 
-    let bus = UnixStream::connect(&opt.bus).await
-        .map_err(|e| RunError::OpenBus(e, opt.bus))?;
+    let (bus, _) = transport::open(&opt.transport).await?;
 
     let bus_task = tokio::task::spawn({
         let state = state.clone();
@@ -89,43 +84,10 @@ async fn run(opt: Opt) -> Result<(), RunError> {
     result.unwrap()
 }
 
-async fn run_bus(mut stream: UnixStream, state: Arc<AppState>) -> Result<(), io::Error> {
-    let mut buff = [0u8; 128];
-    let mut frame_parser = FrameParser::new();
-
+async fn run_bus(mut bus: TransportReceiver, state: Arc<AppState>) -> Result<(), io::Error> {
     loop {
-        let data = match stream.read(&mut buff).await {
-            Ok(0) => { break }
-            Ok(n) => &buff[..n],
-            Err(e) if e.kind() == io::ErrorKind::TimedOut => {
-                // TODO we should just make this poll or something
-                continue;
-            }
-            Err(e) => { return Err(e) }
-        };
-
-        for byte in data {
-            match frame_parser.feed(*byte) {
-                Ok(None) => {}
-                Ok(Some(frame)) => {
-                    on_frame(frame, &state);
-                }
-                Err(err) => {
-                    log::warn!("frame error: {err}");
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn on_frame(frame: &FrameBuffer, state: &AppState) {
-    match Packet::parse(frame) {
-        Ok(packet) => on_packet(&packet, state),
-        Err(err) => {
-            log::warn!("packet error: {err}");
-        }
+        let packet = bus.read().await?;
+        on_packet(&packet, &state);
     }
 }
 

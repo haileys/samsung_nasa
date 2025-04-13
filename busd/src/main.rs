@@ -6,7 +6,7 @@ use std::time::Duration;
 use bytes::{Bytes, BytesMut};
 use futures::{future, pin_mut, Stream, StreamExt};
 use async_stream::try_stream;
-use samsunghvac_busd::DEFAULT_SOCKET;
+use samsunghvac_client::transport::DEFAULT_SOCKET;
 use samsunghvac_parser::frame::{FrameError, FrameParser, MAX_FRAME_SIZE};
 use samsunghvac_parser::packet::{Packet, PacketError, SerializePacketError};
 use structopt::StructOpt;

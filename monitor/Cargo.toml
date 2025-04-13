@@ -5,6 +5,12 @@ edition = "2024"
 
 [dependencies]
 samsunghvac-busd = { workspace = true }
+samsunghvac-client = { workspace = true }
 samsunghvac-parser = { workspace = true }
+
+env_logger = { workspace = true }
+log = { workspace = true }
 serialport = { workspace = true }
 structopt = { workspace = true }
+thiserror = { workspace = true }
+tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }

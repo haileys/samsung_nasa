@@ -15,8 +15,12 @@ samsunghvac-busd = { path = "busd" }
 samsunghvac-metrics = { path = "metrics" }
 samsunghvac-monitor = { path = "monitor" }
 samsunghvac-parser = { path = "parser" }
+samsunghvac-client = { path = "client" }
 
 # external deps:
+env_logger = { version = "0.11", default-features = false, features = ["humantime", "color", "auto-color"] }
 heapless = "0.8"
+log = "0.4"
 serialport = { version = "4.7", default-features = false }
 structopt = "0.3"
+thiserror = "2.0"

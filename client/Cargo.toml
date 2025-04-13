@@ -1,0 +1,20 @@
+[package]
+name = "samsunghvac-client"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+samsunghvac-parser = { workspace = true }
+
+bytes = "1.10"
+futures = { version = "0.3", default-features = false }
+tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }
+tokio-serial = "5.4"
+tokio-stream = { version = "0.1", default-features = false }
+async-stream = "0.3"
+log = "0.4"
+thiserror = "2.0"
+
+serialport = { workspace = true }
+structopt = { workspace = true }
+heapless = { workspace = true }

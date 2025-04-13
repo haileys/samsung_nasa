@@ -8,7 +8,7 @@ axum = "0.8"
 env_logger = { version = "0.11", default-features = false, features = ["humantime", "color", "auto-color"] }
 futures = { version = "0.3", default-features = false }
 log = "0.4"
-samsunghvac-busd = { workspace = true }
+samsunghvac-client = { workspace = true }
 samsunghvac-parser = { workspace = true }
 structopt = { workspace = true }
 thiserror = "2.0"

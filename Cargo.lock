@@ -794,6 +794,7 @@ dependencies = [
  "futures",
  "heapless",
  "log",
+ "samsunghvac-client",
  "samsunghvac-parser",
  "serialport",
  "structopt",
@@ -808,12 +809,14 @@ name = "samsunghvac-client"
 version = "0.1.0"
 dependencies = [
  "async-stream",
+ "bytes",
  "futures",
  "heapless",
  "log",
  "samsunghvac-parser",
  "serialport",
  "structopt",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-serial",
  "tokio-stream",
@@ -838,7 +841,7 @@ dependencies = [
  "env_logger",
  "futures",
  "log",
- "samsunghvac-busd",
+ "samsunghvac-client",
  "samsunghvac-parser",
  "structopt",
  "thiserror 2.0.12",
@@ -849,10 +852,15 @@ dependencies = [
 name = "samsunghvac-monitor"
 version = "0.1.0"
 dependencies = [
+ "env_logger",
+ "log",
  "samsunghvac-busd",
+ "samsunghvac-client",
  "samsunghvac-parser",
  "serialport",
  "structopt",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]
