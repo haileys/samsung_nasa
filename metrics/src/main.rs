@@ -169,31 +169,31 @@ fn render_metrics(state: &AppState) -> Result<String, fmt::Error> {
 
 fn render_attributes(mut m: AddressMetrics, attrs: &AttrMap) -> fmt::Result {
     if let Some(temp) = get_message::<message::SetTemp>(&attrs) {
-        m.gauge("set_temperature_celcius", temp.as_float())?;
+        m.gauge("set_temperature_celsius", temp.as_float())?;
     }
 
     if let Some(temp) = get_message::<message::CurrentTemp>(&attrs) {
-        m.gauge("current_temperature_celcius", temp.as_float())?;
+        m.gauge("current_temperature_celsius", temp.as_float())?;
     }
 
     if let Some(temp) = get_message::<message::EvaInTemp>(&attrs) {
-        m.gauge("coil_inlet_temperature_celcius", temp.as_float())?;
+        m.gauge("coil_inlet_temperature_celsius", temp.as_float())?;
     }
 
     if let Some(temp) = get_message::<message::EvaOutTemp>(&attrs) {
-        m.gauge("coil_outlet_temperature_celcius", temp.as_float())?;
+        m.gauge("coil_outlet_temperature_celsius", temp.as_float())?;
     }
 
     if let Some(temp) = get_message::<message::OutdoorTemp>(&attrs) {
-        m.gauge("outdoor_temperature_celcius", temp.as_float())?;
+        m.gauge("outdoor_temperature_celsius", temp.as_float())?;
     }
 
     if let Some(temp) = get_message::<message::OutdoorDischargeTemp>(&attrs) {
-        m.gauge("outdoor_discharge_temperature_celcius", temp.as_float())?;
+        m.gauge("outdoor_discharge_temperature_celsius", temp.as_float())?;
     }
 
     if let Some(temp) = get_message::<message::OutdoorExchangerTemp>(&attrs) {
-        m.gauge("outdoor_exchanger_temperature_celcius", temp.as_float())?;
+        m.gauge("outdoor_exchanger_temperature_celsius", temp.as_float())?;
     }
 
     // render raw notification values

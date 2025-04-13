@@ -20,13 +20,13 @@ pub const OUTDOOR_COMP1_STATUS: MessageNumber = MessageNumber(0x8010);
 pub const OUTDOOR_4WAY_STATUS: MessageNumber = MessageNumber(0x801a);
 pub const INDOOR_DEFROST_STAGE: MessageNumber = MessageNumber(0x8061);
 
-pub type SetTemp = TypedMessage<0x4201, Celcius>;
-pub type CurrentTemp = TypedMessage<0x4203, Celcius>;
-pub type EvaInTemp = TypedMessage<0x4201, Celcius>;
-pub type EvaOutTemp = TypedMessage<0x4203, Celcius>;
-pub type OutdoorTemp = TypedMessage<0x8204, Celcius>;
-pub type OutdoorDischargeTemp = TypedMessage<0x820a, Celcius>;
-pub type OutdoorExchangerTemp = TypedMessage<0x8218, Celcius>;
+pub type SetTemp = TypedMessage<0x4201, Celsius>;
+pub type CurrentTemp = TypedMessage<0x4203, Celsius>;
+pub type EvaInTemp = TypedMessage<0x4201, Celsius>;
+pub type EvaOutTemp = TypedMessage<0x4203, Celsius>;
+pub type OutdoorTemp = TypedMessage<0x8204, Celsius>;
+pub type OutdoorDischargeTemp = TypedMessage<0x820a, Celsius>;
+pub type OutdoorExchangerTemp = TypedMessage<0x8218, Celsius>;
 
 pub struct TypedMessage<const N: u16, T> {
     _phantom: PhantomData<T>,
@@ -54,11 +54,11 @@ pub trait FromMessage {
 
 #[derive(Display)]
 #[display("{:.1} °c", self.0)]
-pub struct Celcius(u16);
+pub struct Celsius(u16);
 
-impl Celcius {
+impl Celsius {
     pub fn from_float(f: f32) -> Self {
-        Celcius(f32::round(f * 10.0) as u16)
+        Celsius(f32::round(f * 10.0) as u16)
     }
 
     pub fn as_float(&self) -> f32 {
@@ -66,11 +66,11 @@ impl Celcius {
     }
 }
 
-impl FromValue for Celcius {
+impl FromValue for Celsius {
     type Err = Infallible;
     type Repr = u16;
     fn try_from_repr(value: u16) -> Result<Self, Infallible> {
-        Ok(Celcius(value))
+        Ok(Celsius(value))
     }
 }
 
