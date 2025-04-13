@@ -1,12 +1,12 @@
 use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use futures::{future, pin_mut, Stream, StreamExt};
 use async_stream::try_stream;
+use samsung_nasa_busd::DEFAULT_SOCKET;
 use samsung_nasa_parser::frame::{FrameBuffer, FrameError, FrameParser, MAX_FRAME_SIZE};
 use samsung_nasa_parser::packet::{Packet, PacketError, SerializePacketError};
 use structopt::StructOpt;
@@ -15,10 +15,6 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, broadcast};
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
-
-static DEFAULT_SOCKET: LazyLock<PathBuf> = LazyLock::new(|| {
-    runtime_dir().join("bus")
-});
 
 const BAUD_RATE: u32 = 9600;
 
@@ -278,12 +274,4 @@ fn open_serial_port(path: &str) -> Result<SerialStream, tokio_serial::Error> {
         .stop_bits(serialport::StopBits::One)
         .timeout(Duration::from_secs(1))
         .open_native_async()
-}
-
-fn runtime_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("RUNTIME_DIRECTORY") {
-        PathBuf::from(dir)
-    } else {
-        PathBuf::from("/var/run/samsunghvac")
-    }
 }

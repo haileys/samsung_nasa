@@ -1,10 +1,10 @@
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use samsung_nasa_monitor::pretty_print;
 use samsung_nasa_parser::frame::FrameParser;
 use samsung_nasa_parser::packet::{Address, Packet};
 
@@ -47,6 +47,20 @@ fn main() -> Result<(), ExitCode> {
 }
 
 fn open_path(path: &Path) -> Result<Box<dyn Read>, io::Error> {
+    match open_unix_socket(path) {
+        Ok(socket) => { return Ok(socket); }
+        Err(err) => { eprintln!("error opening path as socket, trying as port: {err}"); }
+    }
+
+    open_serial_port(path)
+}
+
+fn open_unix_socket(path: &Path) -> Result<Box<dyn Read>, io::Error> {
+    let stream = Box::new(UnixStream::connect(path)?);
+    Ok(stream as Box<dyn Read>)
+}
+
+fn open_serial_port(path: &Path) -> Result<Box<dyn Read>, io::Error> {
     let port = serialport::new(path.to_string_lossy(), 9600)
         .data_bits(DataBits::Eight)
         .flow_control(FlowControl::None)
@@ -109,5 +123,12 @@ fn dump_frame(frame: &[u8], ignore: &[Address]) {
         return;
     }
 
-    pretty_print(&packet);
+    let mut rendered = String::new();
+    samsung_nasa_parser::pretty::pretty_print(&mut rendered, &packet, use_color()).unwrap();
+
+    std::io::stdout().write_all(rendered.as_bytes()).unwrap();
+}
+
+fn use_color() -> bool {
+    std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
 }

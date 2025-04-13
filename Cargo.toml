@@ -4,8 +4,9 @@ members = ["parser", "monitor", "cmd", "busd"]
 
 [workspace.dependencies]
 # project crates:
-samsung_nasa_parser = { path = "parser" }
+samsung_nasa_busd = { path = "busd" }
 samsung_nasa_monitor = { path = "monitor" }
+samsung_nasa_parser = { path = "parser" }
 
 # external deps:
 heapless = "0.8"

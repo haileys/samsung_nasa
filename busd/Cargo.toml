@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 samsung_nasa_parser = { workspace = true }
-samsung_nasa_monitor = { workspace = true }
 
 bytes = "1.10"
 futures = { version = "0.3", default-features = false }

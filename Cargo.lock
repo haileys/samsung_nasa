@@ -608,7 +608,6 @@ dependencies = [
  "futures",
  "heapless",
  "log",
- "samsung_nasa_monitor",
  "samsung_nasa_parser",
  "serialport",
  "structopt",
@@ -633,6 +632,7 @@ dependencies = [
 name = "samsung_nasa_monitor"
 version = "0.1.0"
 dependencies = [
+ "samsung_nasa_busd",
  "samsung_nasa_parser",
  "serialport",
  "structopt",
