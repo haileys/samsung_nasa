@@ -1,0 +1,11 @@
+[package]
+name = "samsung_nasa_cmd"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+samsung_nasa_monitor = { workspace = true }
+samsung_nasa_parser = { workspace = true }
+serialport = { workspace = true }
+structopt = { workspace = true }
+heapless = { workspace = true }

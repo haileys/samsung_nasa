@@ -1,10 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["parser", "monitor", "cmd", "busd"]
+members = ["parser", "monitor", "cmd", "busd", "metrics"]
 
 [workspace.dependencies]
 # project crates:
 samsung_nasa_busd = { path = "busd" }
+samsung_nasa_metrics = { path = "metrics" }
 samsung_nasa_monitor = { path = "monitor" }
 samsung_nasa_parser = { path = "parser" }
 

@@ -203,7 +203,7 @@ fn read_payload(message_count: u8, reader: &mut PacketReader) -> Result<Data, Pa
     Ok(Data::Messages(messages))
 }
 
-#[derive(Debug, Display, PartialEq, Eq)]
+#[derive(Debug, Display, PartialEq, Eq, Hash, Clone, Copy)]
 #[debug("{class:02x}.{channel:02x}.{address:02x}")]
 #[display("{:?}", self)]
 pub struct Address {
@@ -371,7 +371,7 @@ pub struct Message {
     pub value: Value,
 }
 
-#[derive(Debug, Display, Clone, Copy)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash)]
 #[debug("MessageNumber({:04x?})", self.0)]
 #[display("{:04x?}", self.0)]
 pub struct MessageNumber(pub u16);
@@ -402,6 +402,51 @@ pub enum Value {
     Enum(u8),
     Variable(u16),
     LongVariable(u32),
+}
+
+#[derive(Debug, Error)]
+#[error("wrong value kind, expected {expected:?}, have {actual:?}")]
+pub struct WrongValueKind {
+    expected: MessageKind,
+    actual: MessageKind,
+}
+
+impl Value {
+    pub fn kind(&self) -> MessageKind {
+        match self {
+            Value::Enum(_) => MessageKind::Enum,
+            Value::Variable(_) => MessageKind::Variable,
+            Value::LongVariable(_) => MessageKind::LongVariable,
+        }
+    }
+
+    fn wrong_value<T>(&self, expected: MessageKind) -> Result<T, WrongValueKind> {
+        Err(WrongValueKind { expected, actual: self.kind() })
+    }
+
+    pub fn expect_u8(&self) -> Result<u8, WrongValueKind> {
+        if let Value::Enum(value) = self {
+            Ok(*value)
+        } else {
+            self.wrong_value(MessageKind::Enum)
+        }
+    }
+
+    pub fn expect_u16(&self) -> Result<u16, WrongValueKind> {
+        if let Value::Variable(value) = self {
+            Ok(*value)
+        } else {
+            self.wrong_value(MessageKind::Enum)
+        }
+    }
+
+    pub fn expect_u32(&self) -> Result<u32, WrongValueKind> {
+        if let Value::LongVariable(value) = self {
+            Ok(*value)
+        } else {
+            self.wrong_value(MessageKind::Enum)
+        }
+    }
 }
 
 #[derive(Debug)]
