@@ -1,0 +1,14 @@
+[mqtt]
+host = ""
+username = ""
+password = ""
+client_id = ""
+
+[discovery]
+prefix = "homeassistant"
+object_id = "samsung_hvac"
+unique_id = "samsung_hvac"
+
+[device]
+bus = "bus.sock"
+address = "20.00.00"
