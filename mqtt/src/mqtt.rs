@@ -276,7 +276,7 @@ fn device_config<'a>(
         min_temp: cmp::min(params.heating_limit.low, params.cooling_limit.low).as_float(),
         max_temp: cmp::max(params.heating_limit.high, params.cooling_limit.high).as_float(),
         precision: 0.1,
-        temp_step: 0.1,
+        temp_step: 0.5,
         // swing_modes: EmptyList,
         temperature_unit: 'C',
     };
