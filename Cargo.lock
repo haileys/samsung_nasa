@@ -875,7 +875,6 @@ dependencies = [
  "bytes",
  "env_logger",
  "futures",
- "heapless",
  "log",
  "samsunghvac-client",
  "samsunghvac-parser",
@@ -912,7 +911,6 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "samsunghvac-client",
- "samsunghvac-monitor",
  "samsunghvac-parser",
  "serialport",
  "structopt",
@@ -939,7 +937,6 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "log",
- "samsunghvac-busd",
  "samsunghvac-client",
  "samsunghvac-parser",
  "serialport",

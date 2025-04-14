@@ -11,11 +11,10 @@ async-stream = "0.3"
 bytes = "1.10"
 env_logger = { workspace = true }
 futures = { version = "0.3", default-features = false }
-heapless = { workspace = true }
 log = { workspace = true }
 serialport = { workspace = true }
 structopt = { workspace = true }
 thiserror = { workspace = true }
 tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }
 tokio-serial = "5.4"
-tokio-stream = { version = "0.1.17", default-features = false }
+tokio-stream = { version = "0.1", default-features = false }

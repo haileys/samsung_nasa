@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-samsunghvac-busd = { workspace = true }
 samsunghvac-client = { workspace = true }
 samsunghvac-parser = { workspace = true }
 

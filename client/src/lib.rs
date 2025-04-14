@@ -119,6 +119,7 @@ impl Client {
 
     pub async fn request(&self, address: Address, messages: &[Message]) -> Result<(), Error> {
         let reply = self.send(address, DataType::Request, messages).await?;
+        expect_reply(reply, DataType::Ack)?;
         Ok(())
     }
 
