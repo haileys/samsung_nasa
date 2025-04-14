@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use samsunghvac_client::transport;
-use samsunghvac_parser::packet::Address;
+use samsunghvac_protocol::packet::Address;
 use serde::{Deserialize, Deserializer};
 use structopt::StructOpt;
 use thiserror::Error;

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-samsunghvac-parser = { workspace = true }
+samsunghvac-protocol = { workspace = true }
 
 bytes = "1.10"
 futures = { version = "0.3", default-features = false }

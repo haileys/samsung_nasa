@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-samsunghvac-parser = { workspace = true }
+samsunghvac-protocol = { workspace = true }
 samsunghvac-client = { workspace = true }
 
 async-stream = "0.3"

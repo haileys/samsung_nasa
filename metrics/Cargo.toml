@@ -9,7 +9,7 @@ env_logger = { workspace = true }
 futures = { version = "0.3", default-features = false }
 log = "0.4"
 samsunghvac-client = { workspace = true }
-samsunghvac-parser = { workspace = true }
+samsunghvac-protocol = { workspace = true }
 structopt = { workspace = true }
 thiserror = "2.0"
 tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }

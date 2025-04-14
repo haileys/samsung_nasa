@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 samsunghvac-client = { workspace = true }
-samsunghvac-parser = { workspace = true }
+samsunghvac-protocol = { workspace = true }
 serialport = { workspace = true }
 structopt = { workspace = true }
 heapless = { workspace = true }

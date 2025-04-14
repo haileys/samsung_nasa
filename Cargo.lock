@@ -877,7 +877,7 @@ dependencies = [
  "futures",
  "log",
  "samsunghvac-client",
- "samsunghvac-parser",
+ "samsunghvac-protocol",
  "serialport",
  "structopt",
  "thiserror 2.0.12",
@@ -896,7 +896,7 @@ dependencies = [
  "heapless",
  "log",
  "pin-project",
- "samsunghvac-parser",
+ "samsunghvac-protocol",
  "serialport",
  "structopt",
  "thiserror 2.0.12",
@@ -911,7 +911,7 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "samsunghvac-client",
- "samsunghvac-parser",
+ "samsunghvac-protocol",
  "serialport",
  "structopt",
 ]
@@ -925,7 +925,7 @@ dependencies = [
  "futures",
  "log",
  "samsunghvac-client",
- "samsunghvac-parser",
+ "samsunghvac-protocol",
  "structopt",
  "thiserror 2.0.12",
  "tokio",
@@ -938,7 +938,7 @@ dependencies = [
  "env_logger",
  "log",
  "samsunghvac-client",
- "samsunghvac-parser",
+ "samsunghvac-protocol",
  "serialport",
  "structopt",
  "thiserror 2.0.12",
@@ -959,7 +959,7 @@ dependencies = [
  "pin-project",
  "rumqttc",
  "samsunghvac-client",
- "samsunghvac-parser",
+ "samsunghvac-protocol",
  "serde",
  "serde_json",
  "structopt",
@@ -972,7 +972,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "samsunghvac-parser"
+name = "samsunghvac-protocol"
 version = "0.1.0"
 dependencies = [
  "derive_more",

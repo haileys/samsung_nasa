@@ -7,9 +7,9 @@ use std::fmt::{Display, Write};
 use axum::extract::State;
 use axum::Router;
 use futures::future;
-use samsunghvac_parser::message;
-use samsunghvac_parser::message::convert::{IsMessage, ValueType};
-use samsunghvac_parser::packet::{Address, Data, DataType, MessageId, Packet, PacketType, Value};
+use samsunghvac_protocol::message;
+use samsunghvac_protocol::message::convert::{IsMessage, ValueType};
+use samsunghvac_protocol::packet::{Address, Data, DataType, MessageId, Packet, PacketType, Value};
 use structopt::StructOpt;
 use thiserror::Error;
 

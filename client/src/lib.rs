@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use message::MessageSet;
-use samsunghvac_parser::message::convert::IsMessage;
-use samsunghvac_parser::packet::{u2, Address, Data, DataType, Message, MessageKind, MessageId, Packet, PacketInfo, PacketType, Value};
+use samsunghvac_protocol::message::convert::IsMessage;
+use samsunghvac_protocol::packet::{u2, Address, Data, DataType, Message, MessageKind, MessageId, Packet, PacketInfo, PacketType, Value};
 use thiserror::Error;
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 use tokio::task;

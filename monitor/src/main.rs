@@ -2,7 +2,7 @@ use std::io::{self, IsTerminal, Write};
 use std::process::ExitCode;
 
 use samsunghvac_client::transport::{self, TransportOpt, TransportReceiver};
-use samsunghvac_parser::packet::Address;
+use samsunghvac_protocol::packet::Address;
 
 use structopt::StructOpt;
 use thiserror::Error;
@@ -54,7 +54,7 @@ async fn monitor(rd: &mut TransportReceiver, ignore: &[Address]) -> Result<(), i
         }
 
         let mut rendered = String::new();
-        samsunghvac_parser::pretty::pretty_print(&mut rendered, &packet, use_color()).unwrap();
+        samsunghvac_protocol::pretty::pretty_print(&mut rendered, &packet, use_color()).unwrap();
         std::io::stdout().write_all(rendered.as_bytes()).unwrap();
     }
 }

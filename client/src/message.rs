@@ -1,4 +1,4 @@
-use samsunghvac_parser::{message::convert::IsMessage, packet::Message};
+use samsunghvac_protocol::{message::convert::IsMessage, packet::Message};
 
 use crate::Error;
 

@@ -3,10 +3,10 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use samsunghvac_parser::frame::FrameParser;
-use samsunghvac_parser::message;
-use samsunghvac_parser::message::types::{OperationMode, PowerSetting};
-use samsunghvac_parser::{frame::MAX_FRAME_SIZE, packet::{Address, Data, DataType, Packet, PacketInfo, PacketType}};
+use samsunghvac_protocol::frame::FrameParser;
+use samsunghvac_protocol::message;
+use samsunghvac_protocol::message::types::{OperationMode, PowerSetting};
+use samsunghvac_protocol::{frame::MAX_FRAME_SIZE, packet::{Address, Data, DataType, Packet, PacketInfo, PacketType}};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -111,7 +111,7 @@ fn main() -> ExitCode {
 
 fn pretty_print(packet: &Packet) {
     let mut rendered = String::new();
-    samsunghvac_parser::pretty::pretty_print(&mut rendered, &packet, use_color()).unwrap();
+    samsunghvac_protocol::pretty::pretty_print(&mut rendered, &packet, use_color()).unwrap();
 
     std::io::stdout().write_all(rendered.as_bytes()).unwrap();
 }

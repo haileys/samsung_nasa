@@ -5,8 +5,8 @@ use std::sync::Mutex;
 use std::task::{Context, Poll};
 
 use futures::{ready, Stream, StreamExt};
-use samsunghvac_parser::message::convert::IsMessage;
-use samsunghvac_parser::packet::{Address, Message, MessageId, Value};
+use samsunghvac_protocol::message::convert::IsMessage;
+use samsunghvac_protocol::packet::{Address, Message, MessageId, Value};
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
 

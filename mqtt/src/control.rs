@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use samsunghvac_client::{Client, Error, Watch};
 use samsunghvac_client::transport::{TransportOpt};
-use samsunghvac_parser::message::types::CelsiusLvar;
-use samsunghvac_parser::message::{self, IsMessage};
-use samsunghvac_parser::packet::{Address, Message};
+use samsunghvac_protocol::message::types::CelsiusLvar;
+use samsunghvac_protocol::message::{self, IsMessage};
+use samsunghvac_protocol::packet::{Address, Message};
 
 use crate::DeviceConfig;
 
