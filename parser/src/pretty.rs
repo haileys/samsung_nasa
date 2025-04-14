@@ -48,7 +48,7 @@ pub fn pretty_print(
                 writeln!(out, "  (empty)")?;
             } else {
                 for msg in msgs {
-                    write!(out, "  {} => ", msg.number)?;
+                    write!(out, "  {} => ", msg.id)?;
                     match msg.value {
                         Value::Enum(value) => writeln!(out, "0x{value:02x} ({value})")?,
                         Value::Variable(value) => writeln!(out, "0x{value:04x} ({value})")?,

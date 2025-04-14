@@ -10,7 +10,7 @@ bytes = "1.10"
 futures = { version = "0.3", default-features = false }
 tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }
 tokio-serial = "5.4"
-tokio-stream = { version = "0.1", default-features = false }
+tokio-stream = { version = "0.1", default-features = false, features = ["sync"] }
 async-stream = "0.3"
 log = "0.4"
 thiserror = "2.0"
@@ -18,3 +18,4 @@ thiserror = "2.0"
 serialport = { workspace = true }
 structopt = { workspace = true }
 heapless = { workspace = true }
+pin-project = { version = "1.1.10", default-features = false }

@@ -142,8 +142,8 @@ impl Packet {
                 writer.write_u8(u8::try_from(messages.len()).unwrap())?;
 
                 for message in messages {
-                    writer.write_u16(message.number.0)?;
-                    match (message.number.kind(), message.value) {
+                    writer.write_u16(message.id.0)?;
+                    match (message.id.kind(), message.value) {
                         (MessageKind::Enum, Value::Enum(value)) => {
                             writer.write_u8(value)?;
                         }
@@ -178,7 +178,7 @@ fn read_payload(message_count: u8, reader: &mut PacketReader) -> Result<Data, Pa
     let mut messages = MessagesVec::new();
 
     for i in 0..message_count {
-        let number = MessageNumber(reader.read_u16()?);
+        let number = MessageId(reader.read_u16()?);
         let value = match number.kind() {
             MessageKind::Enum => Value::Enum(reader.read_u8()?),
             MessageKind::Variable => Value::Variable(reader.read_u16()?),
@@ -195,7 +195,7 @@ fn read_payload(message_count: u8, reader: &mut PacketReader) -> Result<Data, Pa
             }
         };
 
-        messages.push(Message { number, value })
+        messages.push(Message { id: number, value })
             .map_err(|_| ())
             .expect("exceeded messages capacity, should never happen");
     }
@@ -367,16 +367,16 @@ impl DataType {
 
 #[derive(Debug, Clone)]
 pub struct Message {
-    pub number: MessageNumber,
+    pub id: MessageId,
     pub value: Value,
 }
 
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash)]
-#[debug("MessageNumber({:04x?})", self.0)]
+#[debug("{:04x?}", self.0)]
 #[display("{:04x?}", self.0)]
-pub struct MessageNumber(pub u16);
+pub struct MessageId(pub u16);
 
-impl MessageNumber {
+impl MessageId {
     pub fn kind(&self) -> MessageKind {
         match (self.0 & 0x0600) >> 9 {
             0 => MessageKind::Enum,
@@ -451,7 +451,7 @@ impl Value {
 
 #[derive(Debug)]
 pub struct Structure {
-    pub number: MessageNumber,
+    pub number: MessageId,
     pub data: StructureData,
 }
 

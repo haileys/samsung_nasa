@@ -13,17 +13,17 @@ pub struct EnumOutOfRange {
 }
 
 // Celcius
-#[derive(Display)]
-#[display("{:.1} °c", self.0)]
+#[derive(Display, PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
+#[display("{:.1} °C", self.as_float())]
 pub struct Celsius(u16);
 
 impl Celsius {
-    pub fn from_float(f: f32) -> Self {
-        Celsius(f32::round(f * 10.0) as u16)
+    pub fn from_float(temp: f32) -> Self {
+        Celsius(decis_from_float(temp))
     }
 
     pub fn as_float(&self) -> f32 {
-        self.0 as f32 / 10.0
+        float_from_decis(self.0)
     }
 }
 
@@ -38,6 +38,44 @@ impl ValueType for Celsius {
     fn to_repr(&self) -> u16 {
         self.0
     }
+}
+
+#[derive(Display, PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
+#[display("{:.1} °C", self.as_float())]
+/// This is a celsius value, but represented in the high 16 bits of a
+/// 32 bit long variable for some reason
+pub struct CelsiusLvar(u16);
+
+impl CelsiusLvar {
+    pub fn from_float(temp: f32) -> Self {
+        CelsiusLvar(decis_from_float(temp))
+    }
+
+    pub fn as_float(&self) -> f32 {
+        float_from_decis(self.0)
+    }
+}
+
+impl ValueType for CelsiusLvar {
+    type Err = Infallible;
+    type Repr = u32;
+
+    fn try_from_repr(value: u32) -> Result<Self, Infallible> {
+        let value = (value >> 16) as u16;
+        Ok(CelsiusLvar(value))
+    }
+
+    fn to_repr(&self) -> u32 {
+        (self.0 as u32) << 16
+    }
+}
+
+fn decis_from_float(value: f32) -> u16 {
+    f32::round(value * 10.0) as u16
+}
+
+fn float_from_decis(decis: u16) -> f32 {
+    decis as f32 / 10.0
 }
 
 macro_rules! define_enum {
@@ -88,6 +126,15 @@ define_enum! {
         AutoDry = 12,
         AutoFan = 13,
         AutoHeat = 14,
+    }
+}
+
+define_enum! {
+    enum FanSetting {
+        Auto = 0,
+        Low = 1,
+        Medium = 2,
+        High = 3,
     }
 }
 

@@ -1,2 +1,6 @@
 /target
+/.envrc
+/mqtt.toml
+/deploy
+/script/build-arm64
 *.bin

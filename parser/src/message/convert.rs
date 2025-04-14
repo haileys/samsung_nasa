@@ -1,15 +1,24 @@
-use crate::packet::{Message, MessageNumber, Value, WrongValueKind};
+use core::fmt::Display;
+
+use crate::packet::{Message, MessageId, Value, WrongValueKind};
 
 pub struct TypedMessage<const N: u16, T>(pub T);
 
 impl<const N: u16, T: ValueType> IsMessage for TypedMessage<N, T> {
     type Value = T;
-    const NUMBER: MessageNumber = MessageNumber(N);
+    const ID: MessageId = MessageId(N);
 
     fn get(msg: &Message) -> Option<Self::Value> {
-        if msg.number == Self::NUMBER {
+        if msg.id == Self::ID {
             let repr = T::Repr::try_from_value(msg.value).ok()?;
-            T::try_from_repr(repr).ok()
+
+            match T::try_from_repr(repr) {
+                Ok(value) => Some(value),
+                Err(err) => {
+                    log::warn!("deserializing message {}: {err} (repr = {repr})", msg.id);
+                    None
+                }
+            }
         } else {
             None
         }
@@ -21,7 +30,7 @@ impl<const N: u16, T: ValueType> IsMessage for TypedMessage<N, T> {
 
     fn to_message(&self) -> Message {
         Message {
-            number: Self::NUMBER,
+            id: Self::ID,
             value: self.0.to_value(),
         }
     }
@@ -29,14 +38,14 @@ impl<const N: u16, T: ValueType> IsMessage for TypedMessage<N, T> {
 
 pub trait IsMessage {
     type Value: Sized + ValueType;
-    const NUMBER: MessageNumber;
+    const ID: MessageId;
     fn get(msg: &Message) -> Option<Self::Value>;
     fn new(value: Self::Value) -> Self;
     fn to_message(&self) -> Message;
 }
 
 pub trait ValueType: Sized {
-    type Err: Sized;
+    type Err: Display + Sized;
     type Repr: ValueRepr;
 
     fn try_from_repr(repr: Self::Repr) -> Result<Self, Self::Err>;
@@ -52,7 +61,7 @@ pub trait ValueType: Sized {
     }
 }
 
-pub trait ValueRepr: Sized {
+pub trait ValueRepr: Display + Sized + Copy {
     fn try_from_value(value: Value) -> Result<Self, WrongValueKind>;
     fn to_value(&self) -> Value;
 }

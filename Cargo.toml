@@ -2,20 +2,22 @@
 resolver = "3"
 members = [
     "busd",
+    "client",
     "cmd",
     "metrics",
     "monitor",
+    "mqtt",
     "parser",
-    "client",
 ]
 
 [workspace.dependencies]
 # project crates:
 samsunghvac-busd = { path = "busd" }
+samsunghvac-client = { path = "client" }
 samsunghvac-metrics = { path = "metrics" }
 samsunghvac-monitor = { path = "monitor" }
+samsunghvac-mqtt = { path = "mqtt" }
 samsunghvac-parser = { path = "parser" }
-samsunghvac-client = { path = "client" }
 
 # external deps:
 env_logger = { version = "0.11", default-features = false, features = ["humantime", "color", "auto-color"] }

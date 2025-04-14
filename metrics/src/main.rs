@@ -9,7 +9,7 @@ use axum::Router;
 use futures::future;
 use samsunghvac_parser::message;
 use samsunghvac_parser::message::convert::{IsMessage, ValueType};
-use samsunghvac_parser::packet::{Address, Data, DataType, MessageNumber, Packet, PacketType, Value};
+use samsunghvac_parser::packet::{Address, Data, DataType, MessageId, Packet, PacketType, Value};
 use structopt::StructOpt;
 use thiserror::Error;
 
@@ -55,7 +55,7 @@ struct AppState {
     metrics: Mutex<HashMap<Address, AttrMap>>,
 }
 
-type AttrMap = HashMap<MessageNumber, Value>;
+type AttrMap = HashMap<MessageId, Value>;
 
 async fn run(opt: Opt) -> Result<(), RunError> {
     let state = Arc::new(AppState::default());
@@ -109,7 +109,7 @@ fn on_packet(packet: &Packet, state: &AppState) {
     for msg in msgs {
         metrics.entry(packet.source)
             .or_default()
-            .insert(msg.number, msg.value);
+            .insert(msg.id, msg.value);
     }
 }
 
@@ -177,7 +177,7 @@ fn render_attributes(mut m: AddressMetrics, attrs: &AttrMap) -> fmt::Result {
 }
 
 fn get_message<M: IsMessage>(attrs: &AttrMap) -> Option<M::Value> {
-    let value = attrs.get(&M::NUMBER)?;
+    let value = attrs.get(&M::ID)?;
     M::Value::try_from_value(*value)
 }
 

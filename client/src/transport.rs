@@ -9,6 +9,7 @@ use bytes::{Bytes, BytesMut};
 use futures::{Stream, StreamExt};
 use samsunghvac_parser::frame::{FrameError, FrameParser, MAX_FRAME_SIZE};
 use samsunghvac_parser::packet::{Packet, PacketError, SerializePacketError};
+use samsunghvac_parser::pretty::pretty_print;
 use structopt::StructOpt;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -20,7 +21,7 @@ const BAUD_RATE: u32 = 9600;
 #[derive(StructOpt)]
 pub struct TransportOpt {
     #[structopt(long = "bus", env = "SAMSUNGHVAC_BUS", default_value_os = DEFAULT_SOCKET.as_os_str())]
-    bus: PathBuf,
+    pub bus: PathBuf,
 }
 
 pub type AsyncTransport = (TransportReceiver, TransportSender);
@@ -73,7 +74,14 @@ impl TransportReceiver {
     pub async fn read(&mut self) -> Result<Box<Packet>, io::Error> {
         while let Some(result) = self.rd.next().await {
             match result? {
-                Ok(packet) => { return Ok(packet); }
+                Ok(packet) => {
+                    if packet.source.class != 0x10 {
+                        let mut pretty = String::new();
+                        pretty_print(&mut pretty, &packet, true).unwrap();
+                        log::debug!("recv packet: {pretty}");
+                    }
+                    return Ok(packet);
+                }
                 Err(err) => { log::warn!("receive: {err}"); }
             }
         }
@@ -86,7 +94,7 @@ impl TransportReceiver {
 }
 
 pub struct TransportSender {
-    wr: Pin<Box<dyn AsyncWrite>>,
+    wr: Pin<Box<dyn AsyncWrite + Send>>,
 }
 
 #[derive(Error, Debug)]
@@ -98,12 +106,16 @@ pub enum SendPacketError {
 }
 
 impl TransportSender {
-    pub fn new(wr: impl AsyncWrite + 'static) -> Self {
+    pub fn new(wr: impl AsyncWrite + Send + 'static) -> Self {
         let wr = Box::pin(wr) as Pin<Box<_>>;
         TransportSender { wr }
     }
 
     pub async fn send(&mut self, packet: &Packet) -> Result<(), SendPacketError> {
+        let mut pretty = String::new();
+        pretty_print(&mut pretty, &packet, true).unwrap();
+        log::debug!("send packet: {pretty}");
+
         let bytes = serialize_frame(packet)?;
         self.wr.write_all(&bytes).await?;
         Ok(())

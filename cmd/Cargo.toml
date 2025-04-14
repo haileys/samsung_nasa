@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+samsunghvac-client = { workspace = true }
 samsunghvac-monitor = { workspace = true }
 samsunghvac-parser = { workspace = true }
 serialport = { workspace = true }
