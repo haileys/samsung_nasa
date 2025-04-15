@@ -10,6 +10,7 @@ use structopt::StructOpt;
 use thiserror::Error;
 use tokio::task::LocalSet;
 
+mod util;
 mod control;
 mod mqtt;
 

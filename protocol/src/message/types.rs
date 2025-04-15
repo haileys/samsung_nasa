@@ -27,6 +27,12 @@ impl Celsius {
     }
 }
 
+impl From<CelsiusLvar> for Celsius {
+    fn from(value: CelsiusLvar) -> Self {
+        Celsius(value.0)
+    }
+}
+
 impl ValueType for Celsius {
     type Err = Infallible;
     type Repr = u16;

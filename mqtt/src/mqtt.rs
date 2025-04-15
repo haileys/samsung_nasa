@@ -1,23 +1,24 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::str::{self, FromStr};
-use std::{cmp, fmt::Display};
+use std::cmp;
 use std::time::Duration;
 
-use async_stream::stream;
-use futures::future::Either;
-use futures::{stream, Stream, StreamExt};
 use rumqttc::{AsyncClient, ConnectionError, EventLoop, MqttOptions, QoS};
-use samsunghvac_client::Error;
-use samsunghvac_protocol::message::types::{Celsius, FanSetting, OperationMode, PowerSetting};
-use samsunghvac_protocol::message::{self, CurrentTemp, SetTemp};
 use serde::Serialize;
 use strum::{Display, EnumString};
-use tokio::task;
+use tokio::sync::watch;
+use tokio::{task, time};
 
+use samsunghvac_client::Error;
+use samsunghvac_protocol::message::types::{Celsius, FanSetting, OperationMode, PowerSetting};
+use samsunghvac_protocol::message;
+
+use crate::control;
 use crate::{control::SamsungHvac, DiscoveryConfig, MqttConfig};
 
 const REFUSED_BACKOFF: Duration = Duration::from_secs(1);
+const LIVENESS_TIMEOUT: Duration = Duration::from_secs(60);
 
 struct MqttCtx {
     mqtt: AsyncClient,
@@ -45,49 +46,68 @@ pub async fn start(
     task::spawn_local(run_mqtt(ctx.clone(), eventloop));
 
     // subscriptions
-    for topic in &[
-        &ctx.topics.homeassistant_status,
-        &ctx.topics.climate.fan_mode_command,
-        &ctx.topics.climate.mode_command,
-        &ctx.topics.climate.power_command,
-        &ctx.topics.climate.temperature_command,
-    ] {
-        // ClientError is only returned if there's an error pushing to the
-        // request_tx channel, so just unwrap.
-        ctx.mqtt.subscribe(topic.as_str(), QoS::AtLeastOnce).await.unwrap();
-    }
+    subscribe_topics(&ctx).await;
 
-    // wire up state updates
-    let publish = Publish::new(&ctx.mqtt);
-
-    publish.bind(
-        &ctx.topics.climate.current_temperature,
-        ctx.hvac.watch::<CurrentTemp>().map(|temp| temp.as_float()),
-    );
-
-    publish.bind(
-        &ctx.topics.climate.mode_state,
-        hvac_mode_stream(ctx.hvac.clone()),
-    );
-
-    publish.bind(
-        &ctx.topics.climate.temperature_state,
-        ctx.hvac.watch::<SetTemp>().map(|temp| temp.as_float()),
-    );
-
-    publish.bind(
-        &ctx.topics.climate.fan_mode_state,
-        ctx.hvac.watch::<message::FanMode>().map(FanMode::from)
-    );
-
-    // reload initial values for all watched attributes so that we don't have
-    // to wait for next notification broadcast
-    if let Err(err) = ctx.hvac.reload_watches().await {
-        log::warn!("reloading watched attributes: {err}");
-    }
+    // state updates
+    let (liveness, liveness_rx) = watch::channel(());
+    task::spawn_local(availability_task(ctx.clone(), liveness_rx));
+    task::spawn_local(update_state_task(ctx.clone(), liveness.clone()));
 
     // broadcast device config on boot
     announce_device(&ctx).await;
+}
+
+async fn update_state_task(ctx: Rc<MqttCtx>, liveness: watch::Sender<()>) {
+    let topics = &ctx.topics.climate;
+    let mut updated = ctx.hvac.state_updated();
+
+    while updated.changed().await.is_ok() {
+        let state = ctx.hvac.state();
+
+        // push updates to state topics
+        if let Some(mode) = hvac_mode(&state) {
+            publish(&ctx, &topics.mode_state, mode).await;
+        }
+
+        if let Some(fan) = &state.fan {
+            publish(&ctx, &topics.fan_mode_state, FanMode::from(*fan)).await;
+        }
+
+        if let Some(temp) = &state.set_temp {
+            let temp = temp.as_float();
+            publish(&ctx, &topics.temperature_state, temp).await;
+        }
+
+        if let Some(temp) = &state.current_temp {
+            let temp = temp.as_float();
+            publish(&ctx, &topics.current_temperature, temp).await;
+        }
+
+        // notify the availability task of liveness
+        liveness.send_replace(());
+    }
+}
+
+async fn availability_task(ctx: Rc<MqttCtx>, mut liveness: watch::Receiver<()>) {
+    loop {
+        let result = time::timeout(LIVENESS_TIMEOUT, liveness.changed()).await;
+
+        let availability = match result {
+            Ok(Ok(())) => "online",
+            Err(_) => "offline",
+            Ok(Err(_)) => { break }
+        };
+
+        publish(&ctx, &ctx.topics.climate.availability, availability).await;
+    }
+}
+
+async fn publish(ctx: &MqttCtx, topic: &str, payload: impl ToString) {
+    let payload = payload.to_string();
+    let result = ctx.mqtt.publish(topic, QoS::AtLeastOnce, false, payload).await;
+    // only returns err if can't post an event to the send task.
+    // this should never happen, so unwrap
+    result.unwrap()
 }
 
 async fn run_mqtt(ctx: Rc<MqttCtx>, mut eventloop: EventLoop) {
@@ -105,6 +125,20 @@ async fn run_mqtt(ctx: Rc<MqttCtx>, mut eventloop: EventLoop) {
     }
 }
 
+async fn subscribe_topics(ctx: &MqttCtx) {
+    for topic in &[
+        &ctx.topics.homeassistant_status,
+        &ctx.topics.climate.fan_mode_command,
+        &ctx.topics.climate.mode_command,
+        &ctx.topics.climate.power_command,
+        &ctx.topics.climate.temperature_command,
+    ] {
+        // ClientError is only returned if there's an error pushing to the
+        // request_tx channel, so just unwrap.
+        ctx.mqtt.subscribe(topic.as_str(), QoS::AtLeastOnce).await.unwrap();
+    }
+}
+
 // announces device config for homeassistant discovery
 async fn announce_device(ctx: &MqttCtx) {
     let device = device_config(ctx);
@@ -119,76 +153,18 @@ async fn announce_device(ctx: &MqttCtx) {
     ).await.unwrap();
 }
 
-fn hvac_mode_stream(hvac: SamsungHvac) -> impl Stream<Item = HvacMode> {
-    combine(hvac.watch::<message::Power>(), hvac.watch::<message::Mode>())
-        .map(|(power, mode)| {
-            match (power, mode) {
-                (PowerSetting::Off, _) => HvacMode::Off,
-                (_, OperationMode::Auto) => HvacMode::Auto,
-                (_, OperationMode::Cool) => HvacMode::Cool,
-                (_, OperationMode::Heat) => HvacMode::Heat,
-                (_, OperationMode::Dry) => HvacMode::Dry,
-                (_, OperationMode::Fan) => HvacMode::FanOnly,
-                _ => HvacMode::Unknown,
-            }
-        })
-}
+fn hvac_mode(state: &control::State) -> Option<HvacMode> {
+    let mode = match (state.power?, state.mode?) {
+        (PowerSetting::Off, _) => HvacMode::Off,
+        (_, OperationMode::Auto) => HvacMode::Auto,
+        (_, OperationMode::Cool) => HvacMode::Cool,
+        (_, OperationMode::Heat) => HvacMode::Heat,
+        (_, OperationMode::Dry) => HvacMode::Dry,
+        (_, OperationMode::Fan) => HvacMode::FanOnly,
+        _ => HvacMode::Unknown,
+    };
 
-fn combine<T: Clone, U: Clone>(
-    left_stream: impl Stream<Item = T>,
-    right_stream: impl Stream<Item = U>,
-) -> impl Stream<Item = (T, U)> {
-    stream! {
-        let mut left = None;
-        let mut right = None;
-
-        let stream = stream::select(
-            left_stream.map(Either::Left),
-            right_stream.map(Either::Right),
-        );
-
-        for await item in stream {
-            match item {
-                Either::Left(l) => left = Some(l),
-                Either::Right(r) => right = Some(r),
-            }
-
-            if let (Some(l), Some(r)) = (&left, &right) {
-                yield (l.clone(), r.clone());
-            }
-        }
-    }
-}
-
-struct Publish<'a> {
-    client: &'a AsyncClient,
-}
-
-impl<'a> Publish<'a> {
-    pub fn new(client: &'a AsyncClient) -> Self {
-        Publish { client }
-    }
-
-    pub fn bind(&self, topic: &str, stream: impl Stream<Item = impl Display> + 'static) {
-        let task = stream.for_each({
-            let client = self.client.clone();
-            let topic = topic.to_owned();
-            move |value| {
-                let payload = value.to_string();
-                let topic = topic.clone();
-                let client = client.clone();
-                async move {
-                    log::info!("publish {topic}: {payload}");
-                    let result = client.publish(&topic, QoS::AtLeastOnce, false, payload).await;
-                    if let Err(err) = result {
-                        log::warn!("publishing {topic}: {err}");
-                    }
-                }
-            }
-        });
-
-        tokio::task::spawn_local(task);
-    }
+    Some(mode)
 }
 
 async fn on_event(ctx: &MqttCtx, event: rumqttc::Event) {
@@ -385,8 +361,8 @@ struct ClimateComponentTopics {
     // action: String,
     // #[serde(rename = "json_attributes_topic")]
     // attributes: String,
-    // #[serde(rename = "availability_topic")]
-    // availability: String,
+    #[serde(rename = "availability_topic")]
+    availability: String,
     #[serde(rename = "current_temperature_topic")]
     current_temperature: String,
     #[serde(rename = "fan_mode_command_topic")]
@@ -410,7 +386,7 @@ impl ClimateComponentTopics {
         ClimateComponentTopics {
             // action: format!("{base}/action"),
             // attributes: format!("{base}/attributes"),
-            // availability: format!("{base}/availability"),
+            availability: format!("{base}/availability"),
             current_temperature: format!("{base}/current_temperature"),
             fan_mode_command: format!("{base}/fan/set"),
             fan_mode_state: format!("{base}/fan/state"),

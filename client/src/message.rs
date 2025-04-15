@@ -1,34 +1,38 @@
+use std::borrow::Cow;
+
 use samsunghvac_protocol::{message::convert::IsMessage, packet::Message};
 
 use crate::Error;
 
 #[derive(Default)]
-pub struct MessageSet {
-    messages: Vec<Message>,
+pub struct MessageSet<'a> {
+    messages: Cow<'a, [Message]>,
 }
 
-impl MessageSet {
-    pub fn new(messages: Vec<Message>) -> Self {
-        MessageSet { messages }
+impl<'a> MessageSet<'a> {
+    pub fn new(messages: &'a [Message]) -> Self {
+        MessageSet { messages: Cow::Borrowed(messages) }
     }
 
-    pub fn get<M: IsMessage>(&self) -> Result<M::Value, Error> {
-        for message in &self.messages {
+    pub fn from_vec(messages: Vec<Message>) -> Self {
+        MessageSet { messages: Cow::Owned(messages) }
+    }
+
+    pub fn get<M: IsMessage>(&self) -> Option<M::Value> {
+        for message in self.messages.as_ref() {
             if let Some(value) = M::get(&message) {
-                return Ok(value);
+                return Some(value);
             }
         }
 
-        Err(Error::MissingMessage(M::ID))
+        None
+    }
+
+    pub fn try_get<M: IsMessage>(&self) -> Result<M::Value, Error> {
+        self.get::<M>().ok_or(Error::MissingMessage(M::ID))
     }
 
     pub fn messages(&self) -> &[Message] {
         &self.messages
-    }
-}
-
-impl FromIterator<Message> for MessageSet {
-    fn from_iter<T: IntoIterator<Item = Message>>(iter: T) -> Self {
-        MessageSet { messages: Vec::from_iter(iter) }
     }
 }

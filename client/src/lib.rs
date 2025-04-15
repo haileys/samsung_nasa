@@ -1,69 +1,67 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use message::MessageSet;
-use samsunghvac_protocol::message::convert::IsMessage;
 use samsunghvac_protocol::packet::{u2, Address, Data, DataType, Message, MessageKind, MessageId, Packet, PacketInfo, PacketType, Value};
 use thiserror::Error;
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 use tokio::task;
-use transport::{SendPacketError, TransportReceiver, TransportSender};
-use watch::WatchRegistry;
+use transport::{OpenError, SendPacketError, TransportOpt, TransportReceiver, TransportSender};
 
 pub mod transport;
 pub mod message;
-mod watch;
 
-pub use watch::Watch;
+use message::MessageSet;
 
 const LOCAL_ADDRESS: Address = Address { class: 0x80, channel: 0x10, address: 0x10 };
 const RETRY_DELAY: Duration = Duration::from_secs(1);
 
 pub struct Client {
-    shared: Arc<Shared>,
-    task: task::JoinHandle<()>,
+    shared: Rc<Shared>,
+    reader: task::JoinHandle<()>,
     packet_number: AtomicU8,
+}
+
+pub trait Callbacks {
+    fn on_notification(&self, sender: Address, data: &MessageSet);
 }
 
 struct Shared {
     address: Address,
     writer: AsyncMutex<TransportSender>,
-    waiting: Mutex<HashMap<u8, oneshot::Sender<Box<Packet>>>>,
-    watches: WatchRegistry,
+    waiting: RefCell<HashMap<u8, oneshot::Sender<Box<Packet>>>>,
+    callbacks: Box<dyn Callbacks>,
 }
 
 impl Client {
-    pub async fn connect(opt: &transport::TransportOpt) -> Result<Self, transport::OpenError> {
+    pub async fn connect(opt: &TransportOpt, callbacks: impl Callbacks + 'static)
+        -> Result<Self, transport::OpenError>
+    {
+        Self::connect_boxed(opt, Box::new(callbacks) as Box<_>).await
+    }
+
+    pub async fn connect_boxed(opt: &TransportOpt, callbacks: Box<dyn Callbacks>)
+        -> Result<Self, OpenError>
+    {
         let (reader, writer) = transport::open(opt).await?;
 
-        let shared = Arc::new(Shared {
+        let shared = Rc::new(Shared {
             address: LOCAL_ADDRESS,
             writer: AsyncMutex::new(writer),
             waiting: Default::default(),
-            watches: Default::default(),
+            callbacks,
         });
 
-        let task = tokio::task::spawn({
-            let shared = shared.clone();
-            async move {
-                if let Err(err) = task(shared, reader).await {
-                    log::error!("client task: {err}");
-                }
-            }
-        });
+        let reader = tokio::task::spawn_local(
+            reader_task(shared.clone(), reader));
 
         Ok(Client {
             shared,
-            task,
+            reader,
             packet_number: AtomicU8::default(),
         })
-    }
-
-    pub fn watch<M: IsMessage>(&self, sender: Address) -> Watch<M> {
-        self.shared.watches.subscribe::<M>(sender)
     }
 
     fn next_packet_number(&self) -> u8 {
@@ -79,8 +77,8 @@ impl Client {
         let reply = expect_reply(reply, DataType::Response)?;
 
         let messages = match reply.data {
-            Data::Messages(msgs) => MessageSet::from_iter(msgs),
-            Data::Structure(_) => MessageSet::default(),
+            Data::Messages(msgs) => MessageSet::from_vec(msgs.to_vec()),
+            Data::Structure(_) => MessageSet::new(&[]),
         };
 
         return Ok(messages);
@@ -97,24 +95,6 @@ impl Client {
                 MessageKind::Structure => None,
             }
         }
-    }
-
-    pub async fn reload_watches(&self) -> Result<(), Error> {
-        log::debug!("refreshing watches...");
-        for (address, attrs) in self.shared.watches.all_watches() {
-            log::debug!("reading attrs from {address}: {:?}", attrs);
-
-            let set = match self.read(address, &attrs).await {
-                Ok(set) => set,
-                Err(err) => {
-                    log::warn!("reading attrs from {address}: {err}");
-                    continue;
-                }
-            };
-
-            self.shared.watches.notify(address, set.messages());
-        }
-        Ok(())
     }
 
     pub async fn request(&self, address: Address, messages: &[Message]) -> Result<(), Error> {
@@ -144,11 +124,85 @@ impl Client {
 
         // send in a new task for cancel safety
         let send_fut = send_with_retry(self.shared.clone(), packet);
-        let reply = tokio::task::spawn(send_fut).await.unwrap()?;
+        let reply = tokio::task::spawn_local(send_fut).await.unwrap()?;
 
         Ok(reply)
     }
+}
 
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error(transparent)]
+    OpenTransport(#[from] transport::OpenError),
+    #[error(transparent)]
+    Send(#[from] SendPacketError),
+    #[error("max retries exceeded")]
+    MaxRetriesExceeded,
+    #[error("lost transport")]
+    LostTransport,
+    #[error("received negative acknowledgement")]
+    Nack(Box<Packet>),
+    #[error("unexpected reply {actual:?}, expected {expected:?}")]
+    UnexpectedReply { actual: DataType, expected: DataType },
+    #[error("missing message: {0}")]
+    MissingMessage(MessageId),
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.reader.abort();
+    }
+}
+
+async fn reader_task(shared: Rc<Shared>, mut rx: TransportReceiver) {
+    loop {
+        let packet = match rx.read().await {
+            Ok(packet) => packet,
+            Err(err) => {
+                log::error!("reader task failed: {err}");
+                return;
+            }
+        };
+
+        if packet.packet_type != PacketType::Normal {
+            continue;
+        }
+
+        let Data::Messages(messages) = &packet.data else {
+            continue;
+        };
+
+        match packet.data_type {
+            DataType::Notification => {
+                let data = MessageSet::new(&messages);
+                shared.callbacks.on_notification(packet.source, &data);
+            }
+            | DataType::Ack
+            | DataType::Nack
+            | DataType::Response => {
+                on_reply(&shared, packet);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn on_reply(shared: &Shared, packet: Box<Packet>) {
+    // ignore reply-type packets if not addressed directly to us
+    if packet.destination != shared.address {
+        return;
+    }
+
+    // look up waiting task (if any) by packet number
+    let reply_tx = {
+        let mut waiting = shared.waiting.borrow_mut();
+        waiting.remove(&packet.packet_number)
+    };
+
+    // send it to the waiting task
+    if let Some(reply_tx) = reply_tx {
+        let _: Result<_, _> = reply_tx.send(packet);
+    }
 }
 
 fn expect_reply(reply: Box<Packet>, data_type: DataType) -> Result<Box<Packet>, Error> {
@@ -163,12 +217,12 @@ fn expect_reply(reply: Box<Packet>, data_type: DataType) -> Result<Box<Packet>, 
     return Ok(reply);
 }
 
-async fn send_with_retry(shared: Arc<Shared>, mut packet: Box<Packet>) -> Result<Box<Packet>, Error> {
+async fn send_with_retry(shared: Rc<Shared>, mut packet: Box<Packet>) -> Result<Box<Packet>, Error> {
     let (reply_tx, mut reply_rx) = oneshot::channel();
 
     // lock waiting map and insert our reply oneshot
     {
-        let mut waiting = shared.waiting.lock().unwrap();
+        let mut waiting = shared.waiting.borrow_mut();
         waiting.insert(packet.packet_number, reply_tx);
     }
 
@@ -197,73 +251,5 @@ async fn send_with_retry(shared: Arc<Shared>, mut packet: Box<Packet>) -> Result
                 packet.packet_info.retry_count = retry_count.wrapping_add(u2::new(1));
             }
         }
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error(transparent)]
-    OpenTransport(#[from] transport::OpenError),
-    #[error(transparent)]
-    Send(#[from] SendPacketError),
-    #[error("max retries exceeded")]
-    MaxRetriesExceeded,
-    #[error("lost transport")]
-    LostTransport,
-    #[error("received negative acknowledgement")]
-    Nack(Box<Packet>),
-    #[error("unexpected reply {actual:?}, expected {expected:?}")]
-    UnexpectedReply { actual: DataType, expected: DataType },
-    #[error("missing message: {0}")]
-    MissingMessage(MessageId),
-}
-
-impl Drop for Client {
-    fn drop(&mut self) {
-        self.task.abort();
-    }
-}
-
-async fn task(shared: Arc<Shared>, mut rx: TransportReceiver) -> io::Result<()> {
-    loop {
-        let packet = rx.read().await?;
-
-        if packet.packet_type != PacketType::Normal {
-            continue;
-        }
-
-        let Data::Messages(messages) = &packet.data else {
-            continue;
-        };
-
-        match packet.data_type {
-            DataType::Notification => {
-                shared.watches.notify(packet.source, messages);
-            }
-            | DataType::Ack
-            | DataType::Nack
-            | DataType::Response => {
-                on_reply(&shared, packet);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn on_reply(shared: &Shared, packet: Box<Packet>) {
-    // ignore reply-type packets if not addressed directly to us
-    if packet.destination != shared.address {
-        return;
-    }
-
-    // look up waiting task (if any) by packet number
-    let reply_tx = {
-        let mut waiting = shared.waiting.lock().unwrap();
-        waiting.remove(&packet.packet_number)
-    };
-
-    // send it to the waiting task
-    if let Some(reply_tx) = reply_tx {
-        let _: Result<_, _> = reply_tx.send(packet);
     }
 }

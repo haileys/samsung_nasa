@@ -9,7 +9,7 @@ samsunghvac-protocol = { workspace = true }
 
 async-stream = "0.3"
 bytes = "1.10"
-derive_more = { version = "2.0", features = ["from_str"] }
+derive_more = { version = "2.0", features = ["from_str", "deref", "deref_mut"] }
 env_logger = { workspace = true }
 futures = { version = "0.3", default-features = false }
 heapless = { workspace = true }
