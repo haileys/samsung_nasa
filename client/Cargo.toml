@@ -11,8 +11,8 @@ futures = { version = "0.3", default-features = false }
 tokio = { version = "1.44", default-features = false, features = ["bytes", "macros", "net", "rt", "sync"] }
 tokio-serial = "5.4"
 async-stream = "0.3"
-log = "0.4"
-thiserror = "2.0"
+log = { workspace = true }
+thiserror = { workspace = true }
 
 serialport = { workspace = true }
 structopt = { workspace = true }

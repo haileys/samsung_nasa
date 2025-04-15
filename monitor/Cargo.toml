@@ -11,4 +11,5 @@ env_logger = { workspace = true }
 log = { workspace = true }
 structopt = { workspace = true }
 thiserror = { workspace = true }
+
 tokio = { version = "1.44", default-features = false, features = ["bytes", "macros", "net", "rt", "sync"] }

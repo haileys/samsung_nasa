@@ -7,10 +7,11 @@ edition = "2024"
 samsunghvac-client = { workspace = true }
 samsunghvac-protocol = { workspace = true }
 
-axum = "0.8"
 env_logger = { workspace = true }
-futures = { version = "0.3", default-features = false }
-log = "0.4"
 structopt = { workspace = true }
-thiserror = "2.0"
+thiserror = { workspace = true }
+log = { workspace = true }
+
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+futures = { version = "0.3", default-features = false }
 tokio = { version = "1.44", default-features = false, features = ["bytes", "macros", "net", "rt", "sync"] }
