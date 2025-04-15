@@ -26,6 +26,13 @@ pub struct TransportOpt {
 
 pub type AsyncTransport = (TransportReceiver, TransportSender);
 
+pub fn new(io: impl AsyncRead + AsyncWrite + Send + 'static) -> AsyncTransport {
+    let (rd, wr) = tokio::io::split(io);
+    let rd = TransportReceiver::new(rd);
+    let wr = TransportSender::new(wr);
+    (rd, wr)
+}
+
 pub async fn open(opt: &TransportOpt) -> Result<AsyncTransport, OpenError> {
     match open_unix_socket(&opt.bus).await {
         Ok(Some(io)) => { return Ok(io); }
@@ -71,9 +78,16 @@ impl TransportReceiver {
         TransportReceiver { rd }
     }
 
+    pub async fn try_read(&mut self) -> Result<Result<Box<Packet>, ReadPacketError>, io::Error> {
+        self.rd.next().await.ok_or(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "transport receiver stream ended",
+        ))?
+    }
+
     pub async fn read(&mut self) -> Result<Box<Packet>, io::Error> {
-        while let Some(result) = self.rd.next().await {
-            match result? {
+        loop {
+            match self.try_read().await? {
                 Ok(packet) => {
                     if packet.source.class != 0x10 {
                         let mut pretty = String::new();
@@ -82,14 +96,11 @@ impl TransportReceiver {
                     }
                     return Ok(packet);
                 }
-                Err(err) => { log::warn!("receive: {err}"); }
+                Err(err) => {
+                    log::warn!("read: {err}");
+                }
             }
         }
-
-        return Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "transport receiver stream ended",
-        ));
     }
 }
 
@@ -178,11 +189,7 @@ async fn open_unix_socket(path: &Path) -> Result<Option<AsyncTransport>, io::Err
         Err(err) => return Err(err)
     };
 
-    let (rd, wr) = tokio::io::split(stream);
-    let rd = TransportReceiver::new(rd);
-    let wr = TransportSender::new(wr);
-
-    Ok(Some((rd, wr)))
+    Ok(Some(new(stream)))
 }
 
 async fn open_serial_port(path: &Path) -> Result<AsyncTransport, tokio_serial::Error> {
@@ -195,11 +202,7 @@ async fn open_serial_port(path: &Path) -> Result<AsyncTransport, tokio_serial::E
         .timeout(Duration::from_secs(1))
         .open_native_async()?;
 
-    let (rd, wr) = tokio::io::split(serial);
-    let rd = TransportReceiver::new(rd);
-    let wr = TransportSender::new(wr);
-
-    Ok((rd, wr))
+    Ok(new(serial))
 }
 
 pub static DEFAULT_SOCKET: LazyLock<PathBuf> = LazyLock::new(|| {

@@ -1,19 +1,23 @@
 use std::io;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::process::ExitCode;
+use std::task::{Context, Poll, ready};
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use futures::{future, pin_mut, Stream, StreamExt};
-use async_stream::try_stream;
-use samsunghvac_client::transport::DEFAULT_SOCKET;
-use samsunghvac_protocol::frame::{FrameError, FrameParser, MAX_FRAME_SIZE};
+use derive_more::Display;
+use futures::{future, Stream, StreamExt};
+use async_stream::stream;
+use samsunghvac_client::transport::{TransportReceiver, DEFAULT_SOCKET};
+use samsunghvac_protocol::frame::{FrameError, MAX_FRAME_SIZE};
 use samsunghvac_protocol::packet::{Packet, PacketError, SerializePacketError};
 use structopt::StructOpt;
 use thiserror::Error;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{mpsc, broadcast};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::net::UnixListener;
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::mpsc;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
 
 const BAUD_RATE: u32 = 9600;
@@ -47,29 +51,134 @@ async fn run(opt: Opt) -> Result<(), RunError> {
     let port = open_serial_port(&opt.port)
         .map_err(|err| RunError::OpenPort(err, opt.port.clone()))?;
 
-    let (recv_tx, _) = tokio::sync::broadcast::channel(16);
-    let (send_tx, send_rx) = tokio::sync::mpsc::channel(16);
+    let accept = start_accept(listen);
+    let bus = Peer::new(PeerLabel::Bus, port);
+    multiplex(accept, bus).await;
+    Ok(())
+}
 
-    let bus = {
-        let recv_tx = recv_tx.clone();
-        async move {
-            tokio::spawn(run_bus(port, recv_tx, send_rx))
-                .await
-                .unwrap()
-                .map_err(RunError::Bus)
+fn multiplex(mut accept: mpsc::Receiver<Peer>, bus: Peer) -> impl Future<Output = ()> {
+    let mut peers = vec![bus];
+
+    future::poll_fn(move |cx| {
+        // handle accepting new clients first:
+        match accept.poll_recv(cx) {
+            Poll::Pending => {}
+            Poll::Ready(None) => { return Poll::Ready(()); }
+            Poll::Ready(Some(peer)) => { peers.push(peer); }
         }
-    };
 
-    let accept = async move {
-        let recv_tx = recv_tx.clone();
-        let send_tx = send_tx.clone();
-        tokio::spawn(run_accept(listen, recv_tx, send_tx))
-            .await
-            .unwrap()
-            .map_err(RunError::Accept)
-    };
+        // handle peer activity
+        loop {
+            let (rx_idx, packet) = ready!(poll_peers(&mut peers, cx));
 
-    race(bus, accept).await
+            let bytes = match serialize_frame(&packet) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    log::warn!("serializing frame: {err}");
+                    continue;
+                }
+            };
+
+            let mut dead = vec![];
+
+            for (idx, peer) in peers.iter_mut().enumerate() {
+                // don't reflect packets back where they came:
+                if idx == rx_idx {
+                    continue;
+                }
+
+                match peer.tx.try_send(bytes.clone()) {
+                    Ok(()) => {}
+                    Err(TrySendError::Full(_)) => {}
+                    Err(TrySendError::Closed(_)) => {
+                        dead.push(idx);
+                    }
+                }
+            }
+
+            while let Some(idx) = dead.pop() {
+                peers.swap_remove(idx);
+            }
+        }
+    })
+}
+
+fn poll_peers(peers: &mut Vec<Peer>, cx: &mut Context<'_>) -> Poll<(usize, Box<Packet>)> {
+    'again: loop {
+        for (idx, peer) in peers.iter_mut().enumerate() {
+            match peer.rx.poll_next_unpin(cx) {
+                Poll::Pending => continue,
+                Poll::Ready(None) => {
+                    peers.swap_remove(idx);
+                    continue 'again;
+                }
+                Poll::Ready(Some(packet)) => {
+                    return Poll::Ready((idx, packet));
+                }
+            }
+        }
+
+        return Poll::Pending;
+    }
+}
+
+struct Peer {
+    rx: Pin<Box<dyn Stream<Item = Box<Packet>> + Send>>,
+    tx: mpsc::Sender<Bytes>,
+}
+
+#[derive(Display, Clone)]
+enum PeerLabel {
+    #[display("bus")]
+    Bus,
+    #[display("client")]
+    Client,
+}
+
+impl Peer {
+    fn new<Io>(label: PeerLabel, io: Io) -> Self
+        where Io: AsyncRead + AsyncWrite + Send + 'static
+    {
+        let (rx, tx) = tokio::io::split(io);
+        let rx = TransportReceiver::new(rx);
+        let rx = Box::pin(recv_stream(rx, label.clone())) as Pin<_>;
+
+        // spawn sender task, so that we can post messages without blocking
+        let (send_tx, send_rx) = mpsc::channel(8);
+        let tx = Box::pin(tx) as Pin<Box<_>>;
+        tokio::spawn(send_task(tx, send_rx, label));
+
+        Peer { rx, tx: send_tx }
+    }
+}
+
+fn recv_stream(mut rx: TransportReceiver, label: PeerLabel) -> impl Stream<Item = Box<Packet>> {
+    stream! {
+        loop {
+            match rx.try_read().await {
+                Ok(Ok(packet)) => { yield packet; }
+                Ok(Err(err)) => { log::warn!("{label} recv: {err}"); }
+                Err(err) => {
+                    log::warn!("{label} recv: {err}");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+async fn send_task(
+    mut tx: Pin<Box<dyn AsyncWrite + Send>>,
+    mut rx: mpsc::Receiver<Bytes>,
+    label: PeerLabel,
+) {
+    while let Some(bytes) = rx.recv().await {
+        if let Err(err) = tx.write_all(&bytes).await {
+            log::warn!("{label} send: {err}");
+            break;
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -78,137 +187,30 @@ enum RunError {
     Bind(#[source] io::Error, PathBuf),
     #[error("opening bus port {1}: {0}")]
     OpenPort(#[source] serialport::Error, String),
-    #[error("bus i/o: {0}")]
-    Bus(#[source] io::Error),
-    #[error("accepting client: {0}")]
-    Accept(#[source] io::Error),
 }
 
-async fn run_accept(
-    listen: UnixListener,
-    recv_tx: broadcast::Sender<Bytes>,
-    send_tx: mpsc::Sender<Box<Packet>>,
-) -> io::Result<()> {
+fn start_accept(listen: UnixListener) -> mpsc::Receiver<Peer> {
+    let (tx, rx) = mpsc::channel(8);
+    tokio::task::spawn(accept_task(listen, tx));
+    rx
+}
+
+async fn accept_task(listen: UnixListener, tx: mpsc::Sender<Peer>) {
     loop {
-        let (client, _) = listen.accept().await?;
-
-        let recv_rx = recv_tx.subscribe();
-        let send_tx = send_tx.clone();
-        tokio::spawn(run_client(client, recv_rx, send_tx));
-    }
-}
-
-async fn run_bus(
-    port: SerialStream,
-    recv_tx: broadcast::Sender<Bytes>,
-    mut send_rx: mpsc::Receiver<Box<Packet>>,
-) -> io::Result<()> {
-    let (port_rx, mut port_tx) = tokio::io::split(port);
-
-    let send = async move {
-        while let Some(packet) = send_rx.recv().await {
-            let bytes = match serialize_frame(&packet) {
-                Ok(bytes) => bytes,
-                Err(err) => {
-                    log::warn!("serializing frame sending to bus: {err:?}");
-                    continue;
-                }
-            };
-
-            port_tx.write_all(&bytes).await?;
-        }
-
-        log::warn!("send_rx hung up, exiting");
-        Ok(())
-    };
-
-    let recv = async move {
-        let packets = packet_stream(port_rx);
-        pin_mut!(packets);
-
-        while let Some(packet) = packets.next().await {
-            let packet = match packet? {
-                Ok(packet) => packet,
-                Err(err) => {
-                    log::warn!("reading bus packet: {err}");
-                    continue;
-                }
-            };
-
-            // we've validated that the packet looks ok!
-            // re-serialize it to send to clients.
-            // this ensures it roundtrips correctly
-            match serialize_frame(&packet) {
-                Ok(bytes) => {
-                    let _: Result<_, _> = recv_tx.send(bytes.into());
-                }
-                Err(err) => {
-                    log::warn!("serializing frame received from bus: {err}");
-                }
-            }
-        }
-
-        log::info!("bus hung up, exiting");
-        Ok(())
-    };
-
-    race(send, recv).await
-}
-
-async fn run_client(
-    client: UnixStream,
-    mut recv_rx: broadcast::Receiver<Bytes>,
-    send_tx: mpsc::Sender<Box<Packet>>,
-) {
-    let (client_rx, mut client_tx) = tokio::io::split(client);
-
-    let recv = async move {
-        let packets = packet_stream(client_rx);
-        pin_mut!(packets);
-
-        while let Some(packet) = packets.next().await {
-            let packet = match packet? {
-                Ok(packet) => packet,
-                Err(err) => {
-                    log::warn!("reading client packet: {err}");
-                    continue;
-                }
-            };
-
-            if let Err(_) = send_tx.send(packet).await {
-                // bus task has quit, we should quit too
-                log::warn!("send_tx hung up, disconnecting client");
+        let (client, _) = match listen.accept().await {
+            Ok(result) => result,
+            Err(err) => {
+                log::error!("accept: {err}");
                 break;
             }
+        };
+
+        let label = PeerLabel::Client;
+        let peer = Peer::new(label, client);
+        if let Err(_) = tx.send(peer).await {
+            break;
         }
-
-        io::Result::Ok(())
-    };
-
-    let send = async move {
-        loop {
-            let bytes = match recv_rx.recv().await {
-                Ok(bytes) => bytes,
-                Err(broadcast::error::RecvError::Closed) => break,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-            };
-
-            client_tx.write_all(&bytes).await?;
-        }
-
-        log::warn!("recv_rx hung up, disconnecting client");
-        Ok(())
-    };
-
-    if let Err(err) = race(recv, send).await {
-        log::warn!("client i/o error: {err}");
     }
-}
-
-async fn race<T>(a: impl Future<Output = T>, b: impl Future<Output = T>) -> T {
-    pin_mut!(a);
-    pin_mut!(b);
-    future::select(a, b).await.factor_first().0
 }
 
 fn serialize_frame(packet: &Packet) -> Result<Bytes, SerializePacketError> {
@@ -216,45 +218,6 @@ fn serialize_frame(packet: &Packet) -> Result<Bytes, SerializePacketError> {
     let n = packet.serialize_frame(&mut bytes)?;
     bytes.truncate(n);
     Ok(bytes.into())
-}
-
-fn packet_stream(io: impl AsyncRead)
-    -> impl Stream<Item = io::Result<Result<Box<Packet>, ReadPacketError>>>
-{
-    try_stream! {
-        pin_mut!(io);
-
-        let mut parser = FrameParser::new();
-        let mut buffer = [0u8; 1024];
-
-        loop {
-            let data = match io.read(&mut buffer).await? {
-                0 => break,
-                n => &buffer[..n],
-            };
-
-            for byte in data {
-                let frame = match parser.feed(*byte) {
-                    Ok(None) => continue,
-                    Ok(Some(frame)) => frame,
-                    Err(err) => {
-                        yield Err(err.into());
-                        continue;
-                    }
-                };
-
-                let packet = match Packet::parse(frame) {
-                    Ok(packet) => packet,
-                    Err(err) => {
-                        yield Err(err.into());
-                        continue;
-                    }
-                };
-
-                yield Ok(Box::new(packet));
-            }
-        }
-    }
 }
 
 #[derive(Error, Debug)]

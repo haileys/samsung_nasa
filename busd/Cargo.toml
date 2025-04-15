@@ -9,6 +9,7 @@ samsunghvac-client = { workspace = true }
 
 async-stream = "0.3"
 bytes = "1.10"
+derive_more = { version = "2.0", features = ["display"] }
 env_logger = { workspace = true }
 futures = { version = "0.3", default-features = false }
 log = { workspace = true }

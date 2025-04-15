@@ -873,6 +873,7 @@ version = "0.1.0"
 dependencies = [
  "async-stream",
  "bytes",
+ "derive_more",
  "env_logger",
  "futures",
  "log",

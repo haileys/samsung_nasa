@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::str::FromStr;
+use std::str::{self, FromStr};
 use std::{cmp, fmt::Display};
 use std::time::Duration;
 
