@@ -7,101 +7,116 @@ use std::time::Duration;
 use async_stream::stream;
 use futures::future::Either;
 use futures::{stream, Stream, StreamExt};
-use rumqttc::{AsyncClient, ConnectionError, MqttOptions, QoS};
+use rumqttc::{AsyncClient, ConnectionError, EventLoop, MqttOptions, QoS};
 use samsunghvac_client::Error;
 use samsunghvac_protocol::message::types::{Celsius, FanSetting, OperationMode, PowerSetting};
 use samsunghvac_protocol::message::{self, CurrentTemp, SetTemp};
 use serde::Serialize;
 use strum::{Display, EnumString};
-use tokio::task::LocalSet;
+use tokio::task;
 
 use crate::{control::SamsungHvac, DiscoveryConfig, MqttConfig};
 
 const REFUSED_BACKOFF: Duration = Duration::from_secs(1);
 
-pub async fn run(
+struct MqttCtx {
+    mqtt: AsyncClient,
+    hvac: SamsungHvac,
+    discovery: DiscoveryConfig,
+    topics: Topics,
+}
+
+pub async fn start(
     mqtt: &MqttConfig,
     discovery: &DiscoveryConfig,
     hvac: SamsungHvac,
-) -> Result<(), Error> {
+) {
     let options = mqtt_options(mqtt);
-    let topics = Topics::new(discovery);
+    let (mqtt, eventloop) = AsyncClient::new(options, 8);
 
-    let local = LocalSet::new();
-
-    let (client, mut eventloop) = AsyncClient::new(options, 8);
-    let client = Rc::new(client);
+    let ctx = Rc::new(MqttCtx {
+        mqtt,
+        hvac: hvac.clone(),
+        discovery: discovery.clone(),
+        topics: Topics::new(discovery),
+    });
 
     // receiver task
-    local.spawn_local({
-        let ctx = MqttCtx {
-            hvac: hvac.clone(),
-            topics: topics.clone(),
-        };
-
-        async move {
-            loop {
-                match eventloop.poll().await {
-                    Ok(event) => { on_event(&ctx, event).await; }
-                    // don't immediately try to reconnect if the server
-                    // sent us a connection refused, back off for some delay:
-                    Err(ConnectionError::ConnectionRefused(code)) => {
-                        log::error!("connection refused: {code:?}");
-                        tokio::time::sleep(REFUSED_BACKOFF).await;
-                    }
-                    Err(error) => { log::error!("error: {error}"); }
-                }
-            }
-        }
-    });
+    task::spawn_local(run_mqtt(ctx.clone(), eventloop));
 
     // subscriptions
     for topic in &[
-        &topics.homeassistant_status,
-        &topics.climate.fan_mode_command,
-        &topics.climate.mode_command,
-        &topics.climate.power_command,
-        &topics.climate.temperature_command,
+        &ctx.topics.homeassistant_status,
+        &ctx.topics.climate.fan_mode_command,
+        &ctx.topics.climate.mode_command,
+        &ctx.topics.climate.power_command,
+        &ctx.topics.climate.temperature_command,
     ] {
         // ClientError is only returned if there's an error pushing to the
         // request_tx channel, so just unwrap.
-        client.subscribe(topic.as_str(), QoS::AtLeastOnce).await.unwrap();
+        ctx.mqtt.subscribe(topic.as_str(), QoS::AtLeastOnce).await.unwrap();
+    }
+
+    // wire up state updates
+    let publish = Publish::new(&ctx.mqtt);
+
+    publish.bind(
+        &ctx.topics.climate.current_temperature,
+        ctx.hvac.watch::<CurrentTemp>().map(|temp| temp.as_float()),
+    );
+
+    publish.bind(
+        &ctx.topics.climate.mode_state,
+        hvac_mode_stream(ctx.hvac.clone()),
+    );
+
+    publish.bind(
+        &ctx.topics.climate.temperature_state,
+        ctx.hvac.watch::<SetTemp>().map(|temp| temp.as_float()),
+    );
+
+    publish.bind(
+        &ctx.topics.climate.fan_mode_state,
+        ctx.hvac.watch::<message::FanMode>().map(FanMode::from)
+    );
+
+    // reload initial values for all watched attributes so that we don't have
+    // to wait for next notification broadcast
+    if let Err(err) = ctx.hvac.reload_watches().await {
+        log::warn!("reloading watched attributes: {err}");
     }
 
     // broadcast device config on boot
-    let device = device_config(&hvac, discovery, &topics);
+    announce_device(&ctx).await;
+}
+
+async fn run_mqtt(ctx: Rc<MqttCtx>, mut eventloop: EventLoop) {
+    loop {
+        match eventloop.poll().await {
+            Ok(event) => { on_event(&ctx, event).await; }
+            // don't immediately try to reconnect if the server
+            // sent us a connection refused, back off for some delay:
+            Err(ConnectionError::ConnectionRefused(code)) => {
+                log::error!("connection refused: {code:?}");
+                tokio::time::sleep(REFUSED_BACKOFF).await;
+            }
+            Err(error) => { log::error!("error: {error}"); }
+        }
+    }
+}
+
+// announces device config for homeassistant discovery
+async fn announce_device(ctx: &MqttCtx) {
+    let device = device_config(ctx);
     let payload = serde_json::to_string(&device).unwrap();
-    log::info!("publish {payload}: {payload}");
-    client.publish(&topics.device_config, QoS::AtLeastOnce, false, payload).await.unwrap();
+    log::debug!("publish {payload}: {payload}");
 
-    // wire up state updates
-    let publish = Publish::new(&local, client.clone());
-
-    publish.bind(
-        &topics.climate.current_temperature,
-        hvac.watch::<CurrentTemp>().map(|temp| temp.as_float()),
-    );
-
-    publish.bind(
-        &topics.climate.mode_state,
-        hvac_mode_stream(hvac.clone()),
-    );
-
-    publish.bind(
-        &topics.climate.temperature_state,
-        hvac.watch::<SetTemp>().map(|temp| temp.as_float()),
-    );
-
-    publish.bind(
-        &topics.climate.fan_mode_state,
-        hvac.watch::<message::FanMode>().map(FanMode::from)
-    );
-
-    hvac.reload_watches().await?;
-
-    local.await;
-
-    Ok(())
+    ctx.mqtt.publish(
+        &ctx.topics.device_config,
+        QoS::AtLeastOnce,
+        false,
+        payload,
+    ).await.unwrap();
 }
 
 fn hvac_mode_stream(hvac: SamsungHvac) -> impl Stream<Item = HvacMode> {
@@ -146,13 +161,12 @@ fn combine<T: Clone, U: Clone>(
 }
 
 struct Publish<'a> {
-    local: &'a LocalSet,
-    client: Rc<AsyncClient>,
+    client: &'a AsyncClient,
 }
 
 impl<'a> Publish<'a> {
-    pub fn new(local: &'a LocalSet, client: Rc<AsyncClient>) -> Self {
-        Publish { local, client }
+    pub fn new(client: &'a AsyncClient) -> Self {
+        Publish { client }
     }
 
     pub fn bind(&self, topic: &str, stream: impl Stream<Item = impl Display> + 'static) {
@@ -173,13 +187,8 @@ impl<'a> Publish<'a> {
             }
         });
 
-        self.local.spawn_local(task);
+        tokio::task::spawn_local(task);
     }
-}
-
-struct MqttCtx {
-    topics: Rc<Topics>,
-    hvac: SamsungHvac,
 }
 
 async fn on_event(ctx: &MqttCtx, event: rumqttc::Event) {
@@ -201,6 +210,10 @@ async fn on_event(ctx: &MqttCtx, event: rumqttc::Event) {
 async fn on_message(ctx: &MqttCtx, topic: &str, message: &str) -> Result<(), Error> {
     let mut messages = Vec::new();
 
+    if ctx.topics.homeassistant_status == topic {
+
+    }
+
     if ctx.topics.climate.power_command == topic {
         let power = match message {
             "OFF" => Some(PowerSetting::Off),
@@ -211,7 +224,9 @@ async fn on_message(ctx: &MqttCtx, topic: &str, message: &str) -> Result<(), Err
         if let Some(power) = power {
             messages.push(message::new::<message::Power>(power));
         }
-    } else if ctx.topics.climate.mode_command == topic {
+    }
+
+    if ctx.topics.climate.mode_command == topic {
         let mode = HvacMode::from_str(message).ok()
             .and_then(|mode| match mode {
                 HvacMode::Off => None,
@@ -229,13 +244,17 @@ async fn on_message(ctx: &MqttCtx, topic: &str, message: &str) -> Result<(), Err
         } else {
             messages.push(message::new::<message::Power>(PowerSetting::Off));
         }
-    } else if ctx.topics.climate.temperature_command == topic {
+    }
+
+    if ctx.topics.climate.temperature_command == topic {
         let temp = f32::from_str(message).ok().map(Celsius::from_float);
 
         if let Some(temp) = temp {
             messages.push(message::new::<message::SetTemp>(temp));
         }
-    } else if ctx.topics.climate.fan_mode_command == topic {
+    }
+
+    if ctx.topics.climate.fan_mode_command == topic {
         let mode = FanMode::from_str(message).ok().map(Into::into);
 
         if let Some(mode) = mode {
@@ -257,19 +276,15 @@ fn mqtt_options(mqtt: &MqttConfig) -> MqttOptions {
     options
 }
 
-fn device_config<'a>(
-    hvac: &SamsungHvac,
-    discovery: &DiscoveryConfig,
-    topics: &'a Topics,
-) -> DeviceConfig<'a> {
-    let params = hvac.params();
+fn device_config(ctx: &MqttCtx) -> DeviceConfig {
+    let params = ctx.hvac.params();
 
     let component = ClimateComponent {
         platform: "climate",
-        name: "Samsung HVAC".to_owned(),
-        object_id: discovery.object_id.clone(),
-        unique_id: discovery.unique_id.clone(),
-        topics: &topics.climate,
+        name: "Samsung HVAC",
+        object_id: &ctx.discovery.object_id,
+        unique_id: &ctx.discovery.unique_id,
+        topics: &ctx.topics.climate,
         // home assistant doesn't support different limits by hvac mode,
         // so set limits according to greatest bounds and then clamp down
         // when handling temperature commands
@@ -283,14 +298,14 @@ fn device_config<'a>(
 
     let device = DeviceConfig {
         device: DeviceMapping {
-            name: "Samsung HVAC".to_string(),
-            ids: discovery.unique_id.clone(),
+            name: "Samsung HVAC",
+            ids: &ctx.discovery.unique_id,
         },
         origin: OriginMapping {
-            name: "samsunghvac-mqtt".to_string(),
+            name: "samsunghvac-mqtt",
         },
         components: HashMap::from([
-            (discovery.object_id.to_string(), component),
+            (ctx.discovery.object_id.as_str(), component),
         ]),
         qos: 1,
     };
@@ -349,18 +364,18 @@ struct Topics {
 }
 
 impl Topics {
-    pub fn new(config: &DiscoveryConfig) -> Rc<Self> {
+    pub fn new(config: &DiscoveryConfig) -> Self {
         let prefix = &config.prefix;
         let object_id = &config.object_id;
 
         let component = format!("{prefix}/climate/{object_id}");
         let climate = ClimateComponentTopics::new(&component);
 
-        Rc::new(Topics {
+        Topics {
             homeassistant_status: format!("{prefix}/status"),
             device_config: format!("{prefix}/device/{object_id}/config"),
             climate,
-        })
+        }
     }
 }
 
@@ -412,9 +427,9 @@ impl ClimateComponentTopics {
 struct ClimateComponent<'a> {
     #[serde(rename="p")]
     platform: &'static str,
-    name: String,
-    object_id: String,
-    unique_id: String,
+    name: &'static str,
+    object_id: &'a str,
+    unique_id: &'a str,
     max_temp: f32,
     min_temp: f32,
     precision: f32,
@@ -427,23 +442,23 @@ struct ClimateComponent<'a> {
 
 #[derive(Serialize)]
 struct DeviceConfig<'a> {
-    device: DeviceMapping,
+    device: DeviceMapping<'a>,
     #[serde(rename = "o")]
-    origin: OriginMapping,
+    origin: OriginMapping<'a>,
     #[serde(rename = "cmps")]
-    components: HashMap<String, ClimateComponent<'a>>,
+    components: HashMap<&'a str, ClimateComponent<'a>>,
     qos: usize,
 }
 
 #[derive(Serialize)]
-struct DeviceMapping {
-    name: String,
-    ids: String,
+struct DeviceMapping<'a> {
+    name: &'a str,
+    ids: &'a str,
 }
 
 #[derive(Serialize)]
-struct OriginMapping {
-    name: String,
+struct OriginMapping<'a> {
+    name: &'a str,
 }
 
 #[derive(Serialize, Clone)]

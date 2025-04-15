@@ -2,11 +2,13 @@ use std::{borrow::Cow, io};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use futures::future;
 use samsunghvac_client::transport;
 use samsunghvac_protocol::packet::Address;
 use serde::{Deserialize, Deserializer};
 use structopt::StructOpt;
 use thiserror::Error;
+use tokio::task::LocalSet;
 
 mod control;
 mod mqtt;
@@ -26,7 +28,10 @@ async fn main() -> Result<(), ExitCode> {
         .parse_default_env()
         .init();
 
-    run(opt).await.map_err(|err| {
+    let local = LocalSet::new();
+    let result = local.run_until(run(opt)).await;
+
+    result.map_err(|err| {
         log::error!("{err}");
         ExitCode::FAILURE
     })
@@ -44,10 +49,10 @@ enum RunError {
 
 async fn run(_: Opt) -> Result<(), RunError> {
     let config = load_config()?;
-
     let hvac = control::SamsungHvac::new(&config.device).await?;
-    mqtt::run(&config.mqtt, &config.discovery, hvac).await?;
-    Ok(())
+    mqtt::start(&config.mqtt, &config.discovery, hvac).await;
+    // we're started, now run forever:
+    future::pending().await
 }
 
 #[derive(Error, Debug)]
