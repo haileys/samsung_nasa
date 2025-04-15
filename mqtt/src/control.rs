@@ -1,6 +1,5 @@
 use std::cell::Ref;
 use std::rc::Rc;
-use std::time::Duration;
 
 use samsunghvac_client::message::MessageSet;
 use samsunghvac_client::{Client, Error};
