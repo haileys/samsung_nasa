@@ -1,0 +1,32 @@
+#!/bin/bash -eu
+
+[[ "$#" -ge 4 ]] || {
+    echo "usage: $0 <distro> <arch> -- <command...>" >&1
+    exit 1
+}
+
+distro="$1"
+arch="$2"
+cmd=("${@:4}")
+
+builder_image="samsunghvac-crossbuild-$distro-$arch"
+
+# set defaults for influential cargo env vars
+: "${CARGO_HOME:="$HOME/.cargo"}"
+: "${CARGO_TARGET_DIR:="$(pwd)/target"}"
+
+mkdir -p "$CARGO_HOME"
+mkdir -p "$CARGO_TARGET_DIR"
+exec docker run \
+    --rm \
+    --mount "type=bind,source=$(pwd),destination=/src,readonly" \
+    --mount "type=bind,source=${CARGO_TARGET_DIR},destination=/cargo-target" \
+    --mount "type=bind,source=${CARGO_HOME},destination=/cargo-home" \
+    --env CARGO_TARGET_DIR=/cargo-target \
+    --env CARGO_HOME=/cargo-home \
+    --user "$(id -u):$(id -g)" \
+    --workdir /src \
+    --tty \
+    --interactive \
+    "$builder_image" \
+    "${cmd[@]}"

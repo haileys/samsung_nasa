@@ -1,0 +1,9 @@
+FROM rust:1-bookworm
+
+# add target architecture and update apt
+RUN dpkg --add-architecture arm64
+RUN apt update
+
+# install toolchains for target arch
+RUN apt install -y crossbuild-essential-arm64
+RUN rustup target add aarch64-unknown-linux-gnu

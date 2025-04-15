@@ -1,0 +1,17 @@
+#!/bin/bash -eu
+
+[[ "$#" -eq 2 ]] || {
+    echo "usage: $0 <distro> <arch>" >&1
+    exit 1
+}
+
+distro="$1"
+arch="$2"
+
+builder_image="samsunghvac-crossbuild-$distro-$arch"
+
+cd "$(dirname "$0")"
+docker build \
+    --tag "$builder_image" \
+    -f "Dockerfile.$distro.$arch" \
+    .
