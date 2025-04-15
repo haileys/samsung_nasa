@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::str::{self, FromStr};
-use std::cmp;
 use std::time::Duration;
 
 use rumqttc::{AsyncClient, ConnectionError, EventLoop, MqttOptions, QoS};
@@ -60,6 +59,7 @@ pub async fn start(
 async fn update_state_task(ctx: Rc<MqttCtx>, liveness: watch::Sender<()>) {
     let topics = &ctx.topics.climate;
     let mut updated = ctx.hvac.state_updated();
+    let mut previous_mode = None;
 
     while updated.changed().await.is_ok() {
         let state = ctx.hvac.state();
@@ -67,6 +67,13 @@ async fn update_state_task(ctx: Rc<MqttCtx>, liveness: watch::Sender<()>) {
         // push updates to state topics
         if let Some(mode) = hvac_mode(&state) {
             publish(&ctx, &topics.mode_state, mode).await;
+
+            // if the mode changed, the temperature range might have as well
+            // re-send the discovery announcement
+            if previous_mode != Some(mode) {
+                previous_mode = Some(mode);
+                announce_device(&ctx).await;
+            }
         }
 
         if let Some(fan) = &state.fan {
@@ -76,6 +83,8 @@ async fn update_state_task(ctx: Rc<MqttCtx>, liveness: watch::Sender<()>) {
         if let Some(temp) = &state.set_temp {
             let temp = temp.as_float();
             publish(&ctx, &topics.temperature_state, temp).await;
+        } else {
+            publish(&ctx, &topics.temperature_state, "None").await;
         }
 
         if let Some(temp) = &state.current_temp {
@@ -223,6 +232,7 @@ async fn on_message(ctx: &MqttCtx, topic: &str, message: &str) -> Result<(), Err
         let temp = f32::from_str(message).ok().map(Celsius::from_float);
 
         if let Some(temp) = temp {
+            let temp = ctx.hvac.range().clamp(temp);
             messages.push(message::new::<message::SetTemp>(temp));
         }
     }
@@ -250,7 +260,7 @@ fn mqtt_options(mqtt: &MqttConfig) -> MqttOptions {
 }
 
 fn device_config(ctx: &MqttCtx) -> DeviceConfig {
-    let params = ctx.hvac.params();
+    let range = ctx.hvac.range();
 
     let component = ClimateComponent {
         platform: "climate",
@@ -258,11 +268,8 @@ fn device_config(ctx: &MqttCtx) -> DeviceConfig {
         object_id: &ctx.discovery.object_id,
         unique_id: &ctx.discovery.unique_id,
         topics: &ctx.topics.climate,
-        // home assistant doesn't support different limits by hvac mode,
-        // so set limits according to greatest bounds and then clamp down
-        // when handling temperature commands
-        min_temp: cmp::min(params.heating_limit.low, params.cooling_limit.low).as_float(),
-        max_temp: cmp::max(params.heating_limit.high, params.cooling_limit.high).as_float(),
+        min_temp: range.low.as_float(),
+        max_temp: range.high.as_float(),
         precision: 0.1,
         temp_step: 0.1,
         // swing_modes: EmptyList,

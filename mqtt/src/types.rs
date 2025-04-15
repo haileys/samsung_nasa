@@ -8,7 +8,7 @@ use thiserror::Error;
 #[error("invalid value for {0}: {1}")]
 pub struct InvalidEnumString(&'static str, String);
 
-#[derive(Debug, PartialEq, Display)]
+#[derive(Debug, PartialEq, Display, Clone, Copy)]
 pub enum HvacMode {
     #[display("off")]
     Off,

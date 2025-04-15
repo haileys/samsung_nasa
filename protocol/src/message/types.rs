@@ -87,7 +87,7 @@ fn float_from_decis(decis: u16) -> f32 {
 macro_rules! define_enum {
     { enum $name:ident { $( $variant:ident = $value:expr, )+ } } => {
         #[repr(u8)]
-        #[derive(Debug, Display, Clone, Copy)]
+        #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
         #[display("{:?}", self)]
         pub enum $name {
             $(

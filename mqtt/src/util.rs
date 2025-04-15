@@ -10,14 +10,6 @@ pub struct NotifyCell<T> {
 }
 
 impl<T> NotifyCell<T> {
-    #[allow(unused)]
-    pub fn new(inner: T) -> Self {
-        NotifyCell {
-            inner: RefCell::new(inner),
-            notify: watch::Sender::default(),
-        }
-    }
-
     pub fn borrow(&self) -> Ref<T> {
         self.inner.borrow()
     }
