@@ -26,11 +26,7 @@ struct Opt {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), ExitCode> {
     let opt = Opt::from_args();
-
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Info)
-        .parse_default_env()
-        .init();
+    samsunghvac_common::log::init();
 
     run(opt).await.map_err(|err| {
         log::error!("{err}");

@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Display};
 
 use samsunghvac_protocol::{message::convert::IsMessage, packet::Message};
 
@@ -34,5 +34,20 @@ impl<'a> MessageSet<'a> {
 
     pub fn messages(&self) -> &[Message] {
         &self.messages
+    }
+}
+
+impl<'a> Display for MessageSet<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut separator = false;
+        for message in self.messages() {
+            if separator {
+                write!(f, "; ")?;
+            }
+            write!(f, "{} => {}", message.id, message.value)?;
+            separator = true;
+        }
+
+        Ok(())
     }
 }

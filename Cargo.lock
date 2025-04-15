@@ -820,10 +820,10 @@ dependencies = [
  "async-stream",
  "bytes",
  "derive_more",
- "env_logger",
  "futures",
  "log",
  "samsunghvac-client",
+ "samsunghvac-common",
  "samsunghvac-protocol",
  "serialport",
  "structopt",
@@ -852,14 +852,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "samsunghvac-common"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+]
+
+[[package]]
 name = "samsunghvac-metrics"
 version = "0.1.0"
 dependencies = [
  "axum",
- "env_logger",
  "futures",
  "log",
  "samsunghvac-client",
+ "samsunghvac-common",
  "samsunghvac-protocol",
  "structopt",
  "thiserror 2.0.12",
@@ -870,9 +878,9 @@ dependencies = [
 name = "samsunghvac-monitor"
 version = "0.1.0"
 dependencies = [
- "env_logger",
  "log",
  "samsunghvac-client",
+ "samsunghvac-common",
  "samsunghvac-protocol",
  "structopt",
  "thiserror 2.0.12",
@@ -884,11 +892,11 @@ name = "samsunghvac-mqtt"
 version = "0.1.0"
 dependencies = [
  "derive_more",
- "env_logger",
  "futures",
  "log",
  "rumqttc",
  "samsunghvac-client",
+ "samsunghvac-common",
  "samsunghvac-protocol",
  "serde",
  "serde_json",

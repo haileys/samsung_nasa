@@ -23,12 +23,7 @@ struct Opt {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), ExitCode> {
     let opt = Opt::from_args();
-
-    env_logger::builder()
-        .format_timestamp_millis()
-        .filter_level(default_log_level())
-        .parse_default_env()
-        .init();
+    samsunghvac_common::log::init();
 
     let local = LocalSet::new();
     let result = local.run_until(run(opt)).await;
@@ -63,14 +58,6 @@ enum ConfigError {
     Io(#[from] io::Error),
     #[error(transparent)]
     Toml(#[from] toml::de::Error),
-}
-
-fn default_log_level() -> log::LevelFilter {
-    if cfg!(debug_assertions) {
-        log::LevelFilter::Debug
-    } else {
-        log::LevelFilter::Info
-    }
 }
 
 fn load_config() -> Result<Config, ConfigError> {

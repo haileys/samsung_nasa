@@ -397,7 +397,7 @@ pub enum MessageKind {
     Structure = 3,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Display)]
 pub enum Value {
     Enum(u8),
     Variable(u16),

@@ -104,6 +104,7 @@ async fn availability_task(ctx: Rc<MqttCtx>, mut liveness: watch::Receiver<()>) 
 
 async fn publish(ctx: &MqttCtx, topic: &str, payload: impl ToString) {
     let payload = payload.to_string();
+    log::debug!("publish: {topic}: {payload}");
     let result = ctx.mqtt.publish(topic, QoS::AtLeastOnce, false, payload).await;
     // only returns err if can't post an event to the send task.
     // this should never happen, so unwrap
@@ -143,14 +144,7 @@ async fn subscribe_topics(ctx: &MqttCtx) {
 async fn announce_device(ctx: &MqttCtx) {
     let device = device_config(ctx);
     let payload = serde_json::to_string(&device).unwrap();
-    log::debug!("publish {payload}: {payload}");
-
-    ctx.mqtt.publish(
-        &ctx.topics.device_config,
-        QoS::AtLeastOnce,
-        false,
-        payload,
-    ).await.unwrap();
+    publish(&ctx, &ctx.topics.device_config, payload).await;
 }
 
 fn hvac_mode(state: &control::State) -> Option<HvacMode> {
@@ -169,14 +163,17 @@ fn hvac_mode(state: &control::State) -> Option<HvacMode> {
 
 async fn on_event(ctx: &MqttCtx, event: rumqttc::Event) {
     use rumqttc::{Packet, Event};
+
     match event {
         Event::Incoming(Packet::Publish(packet)) => {
             let topic = packet.topic;
             if let Some(payload) = str::from_utf8(&packet.payload).ok() {
-                log::debug!("received {topic}: {payload}");
+                log::debug!("received: {topic}: {payload}");
                 if let Err(err) = on_message(ctx, &topic, payload).await {
                     log::warn!("error dispatching command on {topic}: {err}");
                 }
+            } else {
+                log::warn!("received invalid utf-8: {topic}");
             }
         }
         _ => {}

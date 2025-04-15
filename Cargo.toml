@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "busd",
     "client",
+    "common",
     "metrics",
     "monitor",
     "mqtt",
@@ -13,6 +14,7 @@ members = [
 # project crates:
 samsunghvac-busd = { path = "busd" }
 samsunghvac-client = { path = "client" }
+samsunghvac-common = { path = "common" }
 samsunghvac-metrics = { path = "metrics" }
 samsunghvac-monitor = { path = "monitor" }
 samsunghvac-mqtt = { path = "mqtt" }

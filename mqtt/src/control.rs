@@ -89,6 +89,10 @@ impl SamsungHvac {
     }
 
     pub async fn request(&self, messages: &[Message]) -> Result<(), Error> {
+        log::debug!("request to {address}: {messages}",
+            address = self.inner.shared.address,
+            messages = MessageSet::new(messages));
+
         self.inner.client.request(self.inner.shared.address, messages).await
     }
 }
@@ -100,6 +104,8 @@ struct Callbacks {
 impl samsunghvac_client::Callbacks for Callbacks {
     fn on_notification(&self, sender: Address, data: &MessageSet) {
         if sender == self.shared.address {
+            log::debug!("notification from {sender}: {data}");
+
             let mut state = self.shared.state.borrow_mut();
             update_state(&mut state, data);
         }
