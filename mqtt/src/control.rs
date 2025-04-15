@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use samsunghvac_client::{Client, Error, Watch};
-use samsunghvac_client::transport::{TransportOpt};
+use samsunghvac_client::transport::TransportOpt;
 use samsunghvac_protocol::message::types::CelsiusLvar;
 use samsunghvac_protocol::message::{self, IsMessage};
 use samsunghvac_protocol::packet::{Address, Message};
@@ -10,7 +10,7 @@ use crate::DeviceConfig;
 
 #[derive(Clone)]
 pub struct SamsungHvac {
-    shared: Arc<Shared>,
+    shared: Rc<Shared>,
 }
 
 struct Shared {
@@ -35,7 +35,7 @@ impl SamsungHvac {
         let client = Client::connect(&transport).await?;
         let params = read_params(&client, config.address).await?;
         Ok(SamsungHvac {
-            shared: Arc::new(Shared {
+            shared: Rc::new(Shared {
                 client,
                 address: config.address,
                 params,
