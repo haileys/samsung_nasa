@@ -6,16 +6,16 @@ use std::time::Duration;
 
 use rumqttc::{AsyncClient, ConnectionError, EventLoop, MqttOptions, QoS};
 use serde::Serialize;
-use strum::{Display, EnumString};
 use tokio::sync::watch;
 use tokio::{task, time};
 
 use samsunghvac_client::Error;
-use samsunghvac_protocol::message::types::{Celsius, FanSetting, OperationMode, PowerSetting};
+use samsunghvac_protocol::message::types::{Celsius, OperationMode, PowerSetting};
 use samsunghvac_protocol::message;
 
-use crate::control;
-use crate::{control::SamsungHvac, DiscoveryConfig, MqttConfig};
+use crate::control::{self, SamsungHvac};
+use crate::types::{FanMode, HvacMode};
+use crate::{DiscoveryConfig, MqttConfig};
 
 const REFUSED_BACKOFF: Duration = Duration::from_secs(1);
 const LIVENESS_TIMEOUT: Duration = Duration::from_secs(60);
@@ -187,7 +187,7 @@ async fn on_message(ctx: &MqttCtx, topic: &str, message: &str) -> Result<(), Err
     let mut messages = Vec::new();
 
     if ctx.topics.homeassistant_status == topic {
-
+        announce_device(ctx).await;
     }
 
     if ctx.topics.climate.power_command == topic {
@@ -287,50 +287,6 @@ fn device_config(ctx: &MqttCtx) -> DeviceConfig {
     };
 
     device
-}
-
-#[derive(Debug, PartialEq, EnumString, Display)]
-#[strum(serialize_all = "snake_case")]
-pub enum HvacMode {
-    Off,
-    Auto,
-    Cool,
-    Heat,
-    Dry,
-    FanOnly,
-    #[strum(serialize = "None")]
-    Unknown,
-}
-
-#[derive(Debug, PartialEq, EnumString, Display)]
-#[strum(serialize_all = "snake_case")]
-pub enum FanMode {
-    Auto,
-    Low,
-    Medium,
-    High,
-}
-
-impl From<FanSetting> for FanMode {
-    fn from(value: FanSetting) -> Self {
-        match value {
-            FanSetting::Auto => FanMode::Auto,
-            FanSetting::Low => FanMode::Low,
-            FanSetting::Medium => FanMode::Medium,
-            FanSetting::High => FanMode::High,
-        }
-    }
-}
-
-impl From<FanMode> for FanSetting {
-    fn from(value: FanMode) -> Self {
-        match value {
-            FanMode::Auto => FanSetting::Auto,
-            FanMode::Low => FanSetting::Low,
-            FanMode::Medium => FanSetting::Medium,
-            FanMode::High => FanSetting::High,
-        }
-    }
 }
 
 struct Topics {

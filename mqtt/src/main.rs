@@ -10,9 +10,10 @@ use structopt::StructOpt;
 use thiserror::Error;
 use tokio::task::LocalSet;
 
-mod util;
 mod control;
 mod mqtt;
+mod types;
+mod util;
 
 #[derive(StructOpt)]
 struct Opt {
