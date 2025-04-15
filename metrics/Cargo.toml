@@ -4,12 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+samsunghvac-client = { workspace = true }
+samsunghvac-protocol = { workspace = true }
+
 axum = "0.8"
 env_logger = { workspace = true }
 futures = { version = "0.3", default-features = false }
 log = "0.4"
-samsunghvac-client = { workspace = true }
-samsunghvac-protocol = { workspace = true }
 structopt = { workspace = true }
 thiserror = "2.0"
-tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }
+tokio = { version = "1.44", default-features = false, features = ["bytes", "macros", "net", "rt", "sync"] }

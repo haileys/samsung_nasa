@@ -897,18 +897,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-serial",
- "tokio-stream",
-]
-
-[[package]]
-name = "samsunghvac-cmd"
-version = "0.1.0"
-dependencies = [
- "heapless",
- "samsunghvac-client",
- "samsunghvac-protocol",
- "serialport",
- "structopt",
 ]
 
 [[package]]
@@ -934,7 +922,6 @@ dependencies = [
  "log",
  "samsunghvac-client",
  "samsunghvac-protocol",
- "serialport",
  "structopt",
  "thiserror 2.0.12",
  "tokio",
@@ -944,11 +931,9 @@ dependencies = [
 name = "samsunghvac-mqtt"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "derive_more",
  "env_logger",
  "futures",
- "heapless",
  "log",
  "rumqttc",
  "samsunghvac-client",
@@ -1254,20 +1239,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eca58d7bba4a75707817a2c44174253f9236b2d5fbd055602e9d5c07c139a047"
 dependencies = [
  "futures-core",
- "pin-project-lite",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "tokio-util"
-version = "0.7.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b9590b93e6fcc1739458317cccd391ad3955e2bde8913edf6f95f9e65a8f034"
-dependencies = [
- "bytes",
- "futures-core",
- "futures-sink",
  "pin-project-lite",
  "tokio",
 ]

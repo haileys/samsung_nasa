@@ -9,7 +9,6 @@ samsunghvac-protocol = { workspace = true }
 
 env_logger = { workspace = true }
 log = { workspace = true }
-serialport = { workspace = true }
 structopt = { workspace = true }
 thiserror = { workspace = true }
-tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }
+tokio = { version = "1.44", default-features = false, features = ["bytes", "macros", "net", "rt", "sync"] }

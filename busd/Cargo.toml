@@ -16,6 +16,6 @@ log = { workspace = true }
 serialport = { workspace = true }
 structopt = { workspace = true }
 thiserror = { workspace = true }
-tokio = { version = "1.44", default-features = false, features = ["bytes", "io-util", "macros", "net", "rt", "sync"] }
+tokio = { version = "1.44", default-features = false, features = ["bytes", "macros", "net", "rt", "sync"] }
 tokio-serial = "5.4"
 tokio-stream = { version = "0.1", default-features = false }
