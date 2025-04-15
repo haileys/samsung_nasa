@@ -110,8 +110,18 @@ fn update_state(state: &mut State, data: &MessageSet) {
     state.power = data.get::<message::Power>();
     state.mode = data.get::<message::Mode>();
     state.fan = data.get::<message::FanMode>();
-    state.set_temp = data.get::<message::SetTemp>();
+    state.set_temp = data.get::<message::SetTemp>()
+        .filter(|_| has_temperature(state));
     state.current_temp = data.get::<message::CurrentTemp>();
+}
+
+// some modes don't have an associated set temperature, and for these
+// modes the hvac reports a temperature of 24 C. we want to ignore that
+fn has_temperature(state: &State) -> bool {
+    match state.mode {
+        Some(OperationMode::Fan) => false,
+        _ => true,
+    }
 }
 
 async fn read_state(inner: Rc<Inner>) {
