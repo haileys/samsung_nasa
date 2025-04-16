@@ -28,7 +28,6 @@ struct Inner {
 struct Shared {
     address: Address,
     state: NotifyCell<State>,
-    range: NotifyCell<Option<TempRange>>,
 }
 
 #[derive(Default)]
@@ -80,7 +79,6 @@ impl SamsungHvac {
         let shared = Rc::new(Shared {
             address: config.address,
             state: NotifyCell::default(),
-            range: NotifyCell::default(),
         });
 
         let client = Client::connect(&transport, Callbacks {
@@ -89,7 +87,6 @@ impl SamsungHvac {
 
         // read essential initial params first:
         let params = read_params(&client, config.address).await?;
-        *shared.range.borrow_mut() = Some(TempRange::nonspecific(&params));
 
         let inner = Rc::new(Inner {
             client,
