@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 
 use env_logger::fmt::Formatter;
 use log::Record;
@@ -42,5 +42,5 @@ fn systemd_log_format(buf: &mut Formatter, record: &Record) -> io::Result<()> {
 }
 
 fn under_systemd() -> bool {
-    std::env::var("SYSTEMD_EXEC_PID").is_ok()
+    std::env::var("SYSTEMD_EXEC_PID").is_ok() && !std::io::stdout().is_terminal()
 }
