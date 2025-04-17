@@ -62,7 +62,7 @@ async fn update_state_task(ctx: Rc<MqttCtx>, liveness: watch::Sender<()>) {
     let mut previous_mode = None;
 
     while updated.changed().await.is_ok() {
-        let state = ctx.hvac.state();
+        let state = ctx.hvac.state().clone();
 
         // push updates to state topics
         if let Some(mode) = hvac_mode(&state) {
@@ -123,7 +123,7 @@ async fn publish(ctx: &MqttCtx, topic: &str, payload: impl ToString) {
 async fn run_mqtt(ctx: Rc<MqttCtx>, mut eventloop: EventLoop) {
     loop {
         match eventloop.poll().await {
-            Ok(event) => { on_event(&ctx, event).await; }
+            Ok(event) => { task::spawn_local(on_event(ctx.clone(), event)); }
             // don't immediately try to reconnect if the server
             // sent us a connection refused, back off for some delay:
             Err(ConnectionError::ConnectionRefused(code)) => {
@@ -170,7 +170,7 @@ fn hvac_mode(state: &control::State) -> Option<HvacMode> {
     Some(mode)
 }
 
-async fn on_event(ctx: &MqttCtx, event: rumqttc::Event) {
+async fn on_event(ctx: Rc<MqttCtx>, event: rumqttc::Event) {
     use rumqttc::{Packet, Event};
 
     match event {
@@ -178,7 +178,7 @@ async fn on_event(ctx: &MqttCtx, event: rumqttc::Event) {
             let topic = packet.topic;
             if let Some(payload) = str::from_utf8(&packet.payload).ok() {
                 log::debug!("received: {topic}: {payload}");
-                if let Err(err) = on_message(ctx, &topic, payload).await {
+                if let Err(err) = on_message(&ctx, &topic, payload).await {
                     log::warn!("error dispatching command on {topic}: {err}");
                 }
             } else {

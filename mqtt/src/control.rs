@@ -30,7 +30,7 @@ struct Shared {
     state: NotifyCell<State>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct State {
     pub power: Option<PowerSetting>,
     pub mode: Option<OperationMode>,
