@@ -24,6 +24,7 @@ struct MqttCtx {
     hvac: SamsungHvac,
     discovery: DiscoveryConfig,
     topics: Topics,
+    announce: watch::Sender<()>,
 }
 
 pub async fn start(
@@ -34,11 +35,14 @@ pub async fn start(
     let options = mqtt_options(mqtt);
     let (mqtt, eventloop) = AsyncClient::new(options, 8);
 
+    let (announce, announce_rx) = watch::channel(());
+
     let ctx = Rc::new(MqttCtx {
         mqtt,
         hvac: hvac.clone(),
         discovery: discovery.clone(),
         topics: Topics::new(discovery),
+        announce,
     });
 
     // receiver task
@@ -52,8 +56,8 @@ pub async fn start(
     task::spawn_local(availability_task(ctx.clone(), liveness_rx));
     task::spawn_local(update_state_task(ctx.clone(), liveness.clone()));
 
-    // broadcast device config on boot
-    announce_device(&ctx).await;
+    // spawn task responsible for device announcements
+    task::spawn_local(announce_task(ctx.clone(), announce_rx));
 }
 
 async fn update_state_task(ctx: Rc<MqttCtx>, liveness: watch::Sender<()>) {
@@ -72,7 +76,7 @@ async fn update_state_task(ctx: Rc<MqttCtx>, liveness: watch::Sender<()>) {
             // re-send the discovery announcement
             if previous_mode != Some(mode) {
                 previous_mode = Some(mode);
-                announce_device(&ctx).await;
+                ctx.announce.send_replace(());
             }
         }
 
@@ -108,6 +112,14 @@ async fn availability_task(ctx: Rc<MqttCtx>, mut liveness: watch::Receiver<()>) 
         };
 
         publish(&ctx, &ctx.topics.climate.availability, availability).await;
+    }
+}
+
+async fn announce_task(ctx: Rc<MqttCtx>, mut announce: watch::Receiver<()>) {
+    while announce.changed().await.is_ok() {
+        let device = device_config(&ctx);
+        let payload = serde_json::to_string(&device).unwrap();
+        publish(&ctx, &ctx.topics.device_config, payload).await;
     }
 }
 
@@ -149,13 +161,6 @@ async fn subscribe_topics(ctx: &MqttCtx) {
     }
 }
 
-// announces device config for homeassistant discovery
-async fn announce_device(ctx: &MqttCtx) {
-    let device = device_config(ctx);
-    let payload = serde_json::to_string(&device).unwrap();
-    publish(&ctx, &ctx.topics.device_config, payload).await;
-}
-
 fn hvac_mode(state: &control::State) -> Option<HvacMode> {
     let mode = match (state.power?, state.mode?) {
         (PowerSetting::Off, _) => HvacMode::Off,
@@ -193,7 +198,7 @@ async fn on_message(ctx: &MqttCtx, topic: &str, message: &str) -> Result<(), Err
     let mut messages = Vec::new();
 
     if ctx.topics.homeassistant_status == topic {
-        announce_device(ctx).await;
+        ctx.announce.send_replace(());
     }
 
     if ctx.topics.climate.power_command == topic {
